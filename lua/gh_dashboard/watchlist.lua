@@ -203,30 +203,41 @@ local function show_notification(repo, ev)
   end
 
   local win = vim.api.nvim_open_win(buf, false, {
-    relative  = "editor",
-    row       = row,
-    col       = col,
-    width     = NOTIF_WIDTH,
-    height    = NOTIF_HEIGHT,
-    style     = "minimal",
-    border    = "rounded",
-    title     = " " .. repo .. " ",
-    title_pos = "left",
-    focusable = false,
-    zindex    = 50,
+    relative   = "editor",
+    row        = row,
+    col        = col,
+    width      = NOTIF_WIDTH,
+    height     = NOTIF_HEIGHT,
+    style      = "minimal",
+    border     = "rounded",
+    title      = " " .. repo .. " ",
+    title_pos  = "left",
+    footer     = " <CR> expand  ·  q dismiss ",
+    footer_pos = "center",
+    focusable  = true,
+    zindex     = 50,
   })
   vim.api.nvim_set_option_value("winhl",
     "FloatTitle:GhWatchTitle,FloatBorder:GhWatchNotif", { win = win })
 
-  local t = vim.uv.new_timer()
-  t:start(NOTIF_TTL_MS, 0, vim.schedule_wrap(function()
-    t:stop() t:close()
+  local function close_notif()
     if vim.api.nvim_win_is_valid(win) then
       pcall(vim.api.nvim_win_close, win, true)
     end
     for i, n in ipairs(state.notifs) do
       if n.win == win then table.remove(state.notifs, i) break end
     end
+  end
+
+  vim.keymap.set("n", "<CR>",  function() close_notif(); open_event(repo, ev) end,
+    { buffer = buf, nowait = true, silent = true })
+  vim.keymap.set("n", "q",     close_notif, { buffer = buf, nowait = true, silent = true })
+  vim.keymap.set("n", "<Esc>", close_notif, { buffer = buf, nowait = true, silent = true })
+
+  local t = vim.uv.new_timer()
+  t:start(NOTIF_TTL_MS, 0, vim.schedule_wrap(function()
+    t:stop() t:close()
+    close_notif()
   end))
 
   table.insert(state.notifs, { win = win, buf = buf, timer = t, _repo = repo, _ev = ev })

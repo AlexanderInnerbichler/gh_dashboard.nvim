@@ -893,6 +893,7 @@ local function open_win()
   vim.wo[state.win].signcolumn     = "no"
   vim.wo[state.win].wrap           = false
   vim.wo[state.win].cursorline     = true
+  vim.wo[state.win].foldenable     = false
 
   local function buf_map(lhs, fn)
     vim.keymap.set("n", lhs, fn, { buffer = state.buf, nowait = true, silent = true })
