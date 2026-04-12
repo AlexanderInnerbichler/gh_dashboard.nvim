@@ -3,8 +3,8 @@ local M = {}
 -- ── constants ──────────────────────────────────────────────────────────────
 
 local WATCHLIST_PATH = vim.fn.expand("~/.config/nvim/gh-watchlist.json")
-local NOTIF_WIDTH    = 54
-local NOTIF_HEIGHT   = 3
+local NOTIF_WIDTH    = 60
+local NOTIF_HEIGHT   = 4
 local MAX_NOTIFS     = 3
 local MAX_HISTORY    = 20
 local NOTIF_TTL_MS   = 5000
@@ -118,6 +118,54 @@ local function event_label(ev)
   return base
 end
 
+local EVENT_ICONS = {
+  PushEvent              = "\U000f06c0 ",
+  PullRequestEvent       = "\U000f0619 ",
+  IssuesEvent            = "\U000f0028 ",
+  IssueCommentEvent      = "\U000f017f ",
+  PullRequestReviewEvent = "\U000f00e4 ",
+  CreateEvent            = "\U000f0415 ",
+  DeleteEvent            = "\U000f0375 ",
+  ForkEvent              = "\U000f0224 ",
+  WatchEvent             = "\U000f04fe ",
+}
+local DEFAULT_EVENT_ICON = "\U000f02d9 "
+
+local function time_ago(iso)
+  if not iso then return "" end
+  local y, mo, d, h, mi, s = iso:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z")
+  if not y then return "" end
+  local t    = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
+                          hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
+  local diff = os.time() - t
+  if diff < 3600   then return math.floor(diff / 60)    .. "m ago"
+  elseif diff < 86400 then return math.floor(diff / 3600)  .. "h ago"
+  else                  return math.floor(diff / 86400)  .. "d ago" end
+end
+
+local function event_detail(ev)
+  local p = ev.payload or {}
+  if ev.type == "PullRequestEvent" then
+    local pr = p.pull_request
+    return (pr and pr.title) or ""
+  elseif ev.type == "IssuesEvent" then
+    local iss = p.issue
+    return (iss and iss.title) or ""
+  elseif ev.type == "IssueCommentEvent" then
+    local body = (p.comment and p.comment.body) or ""
+    return body:match("^([^\n]+)") or ""
+  elseif ev.type == "PushEvent" then
+    local commits = p.commits
+    if type(commits) == "table" and commits[1] then
+      return commits[1].message:match("^([^\n]+)") or ""
+    end
+    return ""
+  elseif ev.type == "CreateEvent" then
+    return (p.ref_type or "") .. ": " .. (p.ref or "")
+  end
+  return ""
+end
+
 local function show_notification(repo, ev)
   local ui  = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
 
@@ -130,19 +178,29 @@ local function show_notification(repo, ev)
     end
   end
 
-  local slot = #state.notifs
-  local row  = 1 + slot * (NOTIF_HEIGHT + 1)
-  local col  = ui.width - NOTIF_WIDTH - 2
-  local label = event_label(ev)
-  local text  = "  ⊙ " .. repo .. "  ·  " .. label
+  local slot   = #state.notifs
+  local row    = 1 + slot * (NOTIF_HEIGHT + 1)
+  local col    = ui.width - NOTIF_WIDTH - 2
+  local icon   = EVENT_ICONS[ev.type] or DEFAULT_EVENT_ICON
+  local label  = event_label(ev)
+  local age    = time_ago(ev.created_at)
+  local detail = event_detail(ev)
+
+  local max_detail = NOTIF_WIDTH - 4
+  if #detail > max_detail then detail = detail:sub(1, max_detail - 1) .. "…" end
+
+  local line1 = "  " .. icon .. label .. (age ~= "" and ("  ·  " .. age) or "")
+  local line2 = detail ~= "" and ("  " .. detail) or nil
 
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { text, "", "" })
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line1, line2 or "", "", "" })
   vim.bo[buf].modifiable = false
-  vim.api.nvim_buf_add_highlight(buf, ns, "GhWatchNotif", 0, 2, 5)  -- ⊙ bullet (3 bytes)
-  vim.api.nvim_buf_add_highlight(buf, ns, "GhWatchRepo",  0, 5, 5 + #repo)
+  vim.api.nvim_buf_add_highlight(buf, ns, "GhWatchNotif", 0, 2, 2 + #icon)
+  if line2 then
+    vim.api.nvim_buf_add_highlight(buf, ns, "GhWatchMeta", 1, 0, -1)
+  end
 
   local win = vim.api.nvim_open_win(buf, false, {
     relative  = "editor",
@@ -152,9 +210,13 @@ local function show_notification(repo, ev)
     height    = NOTIF_HEIGHT,
     style     = "minimal",
     border    = "rounded",
+    title     = " " .. repo .. " ",
+    title_pos = "left",
     focusable = false,
     zindex    = 50,
   })
+  vim.api.nvim_set_option_value("winhl",
+    "FloatTitle:GhWatchTitle,FloatBorder:GhWatchNotif", { win = win })
 
   local t = vim.uv.new_timer()
   t:start(NOTIF_TTL_MS, 0, vim.schedule_wrap(function()
