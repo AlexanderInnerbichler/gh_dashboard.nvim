@@ -119,17 +119,17 @@ local function event_label(ev)
 end
 
 local EVENT_ICONS = {
-  PushEvent              = "\U000f06c0 ",
-  PullRequestEvent       = "\U000f0619 ",
-  IssuesEvent            = "\U000f0028 ",
-  IssueCommentEvent      = "\U000f017f ",
-  PullRequestReviewEvent = "\U000f00e4 ",
-  CreateEvent            = "\U000f0415 ",
-  DeleteEvent            = "\U000f0375 ",
-  ForkEvent              = "\U000f0224 ",
-  WatchEvent             = "\U000f04fe ",
+  PushEvent              = "󰛀 ",
+  PullRequestEvent       = "󰘙 ",
+  IssuesEvent            = "󰀨 ",
+  IssueCommentEvent      = "󰅿 ",
+  PullRequestReviewEvent = "󰃤 ",
+  CreateEvent            = "󰐕 ",
+  DeleteEvent            = "󰍵 ",
+  ForkEvent              = "󰈤 ",
+  WatchEvent             = "󰓾 ",
 }
-local DEFAULT_EVENT_ICON = "\U000f02d9 "
+local DEFAULT_EVENT_ICON = "󰋙 "
 
 local function time_ago(iso)
   if not iso then return "" end
