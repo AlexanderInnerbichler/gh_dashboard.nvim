@@ -171,6 +171,7 @@ local function register_keymaps()
       end
     )
   end)
+  require("gh_dashboard.help").setup_keymap(state.buf, "reader")
 end
 
 local function open_popup(title, footer)
@@ -393,6 +394,7 @@ M.open_diff = function(item)
       )
     end)
   end, { buffer = state.buf, nowait = true, silent = true })
+  require("gh_dashboard.help").setup_keymap(state.buf, "diff")
 
   local pending = 2
   local diff_text, diff_err, head_sha

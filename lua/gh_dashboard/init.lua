@@ -246,6 +246,7 @@ local function open_win()
     state.is_stale = false
     fetch_and_render()
   end)
+  require("gh_dashboard.help").setup_keymap(state.buf, "dashboard")
 
   vim.api.nvim_create_autocmd("CursorMoved", {
     buffer = state.buf,
