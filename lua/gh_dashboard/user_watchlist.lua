@@ -1,4 +1,5 @@
 local M = {}
+local highlights = require("gh_dashboard.highlights")
 
 -- ── constants ──────────────────────────────────────────────────────────────
 
@@ -12,16 +13,9 @@ local state = {
   manager_win  = nil,
 }
 
--- ── highlights ─────────────────────────────────────────────────────────────
+-- ── namespace ──────────────────────────────────────────────────────────────
 
 local ns = vim.api.nvim_create_namespace("GhUserWatch")
-
-local function setup_highlights()
-  vim.api.nvim_set_hl(0, "GhUserWatchTitle", { fg = "#7fc8f8", bold = true      })
-  vim.api.nvim_set_hl(0, "GhUserWatchItem",  { fg = "#abb2bf"                   })
-  vim.api.nvim_set_hl(0, "GhUserWatchEmpty", { fg = "#4b5263", italic = true    })
-  vim.api.nvim_set_hl(0, "GhUserWatchMeta",  { fg = "#4b5263"                   })
-end
 
 -- ── persistence ────────────────────────────────────────────────────────────
 
@@ -238,13 +232,9 @@ M.toggle = function()
 end
 
 M.setup = function()
-  setup_highlights()
+  highlights.setup()
   vim.fn.mkdir(vim.fn.fnamemodify(WATCHLIST_PATH, ":h"), "p")
   load_watchlist()
-  vim.api.nvim_create_autocmd("ColorScheme", {
-    callback = setup_highlights,
-    desc = "Re-apply GhUserWatch highlights on colorscheme change",
-  })
 end
 
 return M

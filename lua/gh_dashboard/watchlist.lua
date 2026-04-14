@@ -1,4 +1,6 @@
 local M = {}
+local gh         = require("gh_dashboard.gh")
+local highlights = require("gh_dashboard.highlights")
 
 -- ── constants ──────────────────────────────────────────────────────────────
 
@@ -22,18 +24,9 @@ local state = {
   manager_win  = nil,
 }
 
--- ── highlights ─────────────────────────────────────────────────────────────
+-- ── namespace ──────────────────────────────────────────────────────────────
 
 local ns = vim.api.nvim_create_namespace("GhWatchlist")
-
-local function setup_highlights()
-  vim.api.nvim_set_hl(0, "GhWatchTitle",  { fg = "#7fc8f8", bold = true       })
-  vim.api.nvim_set_hl(0, "GhWatchRepo",   { fg = "#abb2bf"                    })
-  vim.api.nvim_set_hl(0, "GhWatchNotif",  { fg = "#e5c07b"                    })
-  vim.api.nvim_set_hl(0, "GhWatchEmpty",  { fg = "#4b5263", italic = true     })
-  vim.api.nvim_set_hl(0, "GhWatchSep",    { fg = "#3b4048"                    })
-  vim.api.nvim_set_hl(0, "GhWatchMeta",   { fg = "#4b5263"                    })
-end
 
 -- ── persistence ────────────────────────────────────────────────────────────
 
@@ -65,18 +58,6 @@ local function write_buf(buf, lines, hl_specs)
     vim.api.nvim_buf_add_highlight(buf, ns, spec.hl, spec.line,
       spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
   end
-end
-
--- ── async gh runner ────────────────────────────────────────────────────────
-
-local function run_gh(args, callback)
-  vim.system(args, { text = true }, function(result)
-    vim.schedule(function()
-      if result.code ~= 0 then callback(nil) return end
-      local ok, data = pcall(vim.fn.json_decode, result.stdout)
-      callback(ok and data or nil)
-    end)
-  end)
 end
 
 -- ── notification HUD ──────────────────────────────────────────────────────
@@ -250,12 +231,12 @@ end
 -- ── polling ────────────────────────────────────────────────────────────────
 
 local function poll_repo(entry)
-  run_gh(
+  gh.run(
     { "gh", "api",
       "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
       "--jq", "[.[] | {id,type,created_at,payload}] | .[0:10]" },
-    function(events)
-      if not events or type(events) ~= "table" or #events == 0 then return end
+    function(err, events)
+      if err or not events or type(events) ~= "table" or #events == 0 then return end
       local new_events = {}
       for _, ev in ipairs(events) do
         if tostring(ev.id) == tostring(entry.last_seen_id) then break end
@@ -277,12 +258,12 @@ end
 
 local function seed_history()
   for _, entry in ipairs(state.repos) do
-    run_gh(
+    gh.run(
       { "gh", "api",
         "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
         "--jq", "[.[] | {id,type,created_at,payload}] | .[0:5]" },
-      function(events)
-        if not events or type(events) ~= "table" then return end
+      function(err, events)
+        if err or not events or type(events) ~= "table" then return end
         local repo_key = entry.owner .. "/" .. entry.repo
         for _, ev in ipairs(events) do
           table.insert(state.history, { _repo = repo_key, _ev = ev })
@@ -620,16 +601,12 @@ M.toggle = function()
 end
 
 M.setup = function()
-  setup_highlights()
   vim.fn.mkdir(vim.fn.fnamemodify(WATCHLIST_PATH, ":h"), "p")
   load_watchlist()
   seed_history()
   state.poll_timer = vim.uv.new_timer()
   state.poll_timer:start(POLL_DELAY_MS, POLL_REPEAT_MS, vim.schedule_wrap(poll))
-  vim.api.nvim_create_autocmd("ColorScheme", {
-    callback = setup_highlights,
-    desc = "Re-apply GhWatchlist highlights on colorscheme change",
-  })
+  highlights.setup()
 end
 
 return M
