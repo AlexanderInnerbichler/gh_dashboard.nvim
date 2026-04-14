@@ -56,7 +56,11 @@ local function apply_render()
   local win_width = state.win and vim.api.nvim_win_is_valid(state.win)
     and vim.api.nvim_win_get_width(state.win) or 120
 
-  local lines, hl_specs, items = render.build(data, state.is_loading, state.is_stale, win_width)
+  local watched = {}
+  for _, entry in ipairs(require("gh_dashboard.watchlist").get_repos() or {}) do
+    watched[entry.owner .. "/" .. entry.repo] = true
+  end
+  local lines, hl_specs, items = render.build(data, state.is_loading, state.is_stale, win_width, watched)
   state.items = items
 
   vim.bo[state.buf].modifiable = true

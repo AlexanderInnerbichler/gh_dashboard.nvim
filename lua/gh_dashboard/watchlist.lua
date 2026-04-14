@@ -572,6 +572,10 @@ M.open_latest = function()
   open_history_popup()
 end
 
+M.get_repos = function()
+  return state.repos
+end
+
 -- ── public API — toggle_repo ─────────────────────────────────────────────
 
 M.toggle_repo = function(full_name)
