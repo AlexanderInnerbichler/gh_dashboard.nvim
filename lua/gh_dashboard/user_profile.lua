@@ -1,5 +1,6 @@
 local M = {}
 local heatmap = require("gh_dashboard.heatmap")
+local gh      = require("gh_dashboard.gh")
 
 local ns = vim.api.nvim_create_namespace("GhUserProfile")
 
@@ -7,27 +8,10 @@ local ns = vim.api.nvim_create_namespace("GhUserProfile")
 
 local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
 
-local function run_gh(args, callback)
-  vim.system(args, { text = true }, function(result)
-    vim.schedule(function()
-      if result.code ~= 0 then
-        callback(result.stderr or "gh error", nil)
-        return
-      end
-      local ok, decoded = pcall(vim.fn.json_decode, result.stdout)
-      if not ok then
-        callback("json decode error: " .. tostring(decoded), nil)
-        return
-      end
-      callback(nil, decoded)
-    end)
-  end)
-end
-
 -- ── fetch functions ────────────────────────────────────────────────────────
 
 local function fetch_user_profile(username, callback)
-  run_gh(
+  gh.run(
     { "gh", "api", "/users/" .. username,
       "--jq", "{login:.login,name:.name,bio:.bio,followers:.followers,following:.following,public_repos:.public_repos}" },
     callback
