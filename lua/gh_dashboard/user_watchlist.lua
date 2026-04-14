@@ -95,7 +95,8 @@ local function open_add_input()
     footer     = " <C-s> confirm  ·  <Esc><Esc> cancel ",
     footer_pos = "center",
   })
-  vim.wo[input_win].wrap = true
+  vim.wo[input_win].wrap       = true
+  vim.wo[input_win].foldenable = false
   vim.api.nvim_win_set_cursor(input_win, { 1, 0 })
   vim.cmd("startinsert")
 
@@ -188,6 +189,7 @@ local function open_manager()
   vim.wo[state.manager_win].relativenumber = false
   vim.wo[state.manager_win].signcolumn     = "no"
   vim.wo[state.manager_win].cursorline     = true
+  vim.wo[state.manager_win].foldenable     = false
 
   render_manager()
 
