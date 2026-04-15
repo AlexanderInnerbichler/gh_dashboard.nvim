@@ -228,7 +228,7 @@ function M.open_input(hint, on_submit)
   state.input_buf = vim.api.nvim_create_buf(false, true)
   vim.bo[state.input_buf].buftype   = "nofile"
   vim.bo[state.input_buf].bufhidden = "wipe"
-  vim.bo[state.input_buf].filetype  = "markdown"
+  vim.bo[state.input_buf].filetype  = "text"
 
   vim.api.nvim_buf_set_lines(state.input_buf, 0, -1, false, { "", "" })
 
