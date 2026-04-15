@@ -185,11 +185,12 @@ local function render_repos(lines, hl_specs, items, repos, err, watched)
   else
     for _, repo in ipairs(repos) do
       local is_watched = watched and watched[repo.full_name]
+      local prefix = is_watched and "●  " or "   "
       local lock = repo.is_private and "🔒" or " ⊙"
       local lang = sl(repo.language) ~= "" and sl(repo.language) or "—"
       local age  = age_string(repo.updated_at)
-      local line = string.format("   %s  %-30s  %-10s  ★%-3d  %s",
-        lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
+      local line = string.format("%s%s  %-30s  %-10s  ★%-3d  %s",
+        prefix, lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
       table.insert(items, { line = #lines, url = repo.url, full_name = repo.full_name, kind = "repo" })
       table.insert(lines, line)
       local ln = #lines - 1
@@ -216,11 +217,12 @@ local function render_org_repos(lines, hl_specs, items, org_repos, err, watched)
   else
     for _, repo in ipairs(org_repos) do
       local is_watched = watched and watched[repo.full_name]
+      local prefix = is_watched and "●  " or "   "
       local lock = repo.is_private and "🔒" or " ⊙"
       local lang = sl(repo.language) ~= "" and sl(repo.language) or "—"
       local age  = age_string(repo.updated_at)
-      local line = string.format("   %s  %-30s  %-10s  ★%-3d  %s",
-        lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
+      local line = string.format("%s%s  %-30s  %-10s  ★%-3d  %s",
+        prefix, lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
       table.insert(items, { line = #lines, url = repo.url, full_name = repo.full_name, kind = "repo" })
       table.insert(lines, line)
       local ln = #lines - 1
