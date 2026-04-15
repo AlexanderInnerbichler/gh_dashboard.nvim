@@ -171,6 +171,7 @@ local function register_keymaps()
       end
     )
   end)
+  require("gh_dashboard.help").setup_keymap(state.buf, "reader")
 end
 
 local function open_popup(title, footer)
@@ -215,6 +216,7 @@ local function open_popup(title, footer)
   vim.wo[state.win].wrap           = true
   vim.wo[state.win].linebreak      = true
   vim.wo[state.win].cursorline     = false
+  vim.wo[state.win].foldenable     = false
   register_keymaps()
 end
 
@@ -254,6 +256,7 @@ function M.open_input(hint, on_submit)
   vim.wo[state.input_win].signcolumn     = "no"
   vim.wo[state.input_win].wrap           = true
   vim.wo[state.input_win].linebreak      = true
+  vim.wo[state.input_win].foldenable     = false
 
   vim.api.nvim_win_set_cursor(state.input_win, { 1, 0 })
   vim.cmd("startinsert")
@@ -393,6 +396,7 @@ M.open_diff = function(item)
       )
     end)
   end, { buffer = state.buf, nowait = true, silent = true })
+  require("gh_dashboard.help").setup_keymap(state.buf, "diff")
 
   local pending = 2
   local diff_text, diff_err, head_sha

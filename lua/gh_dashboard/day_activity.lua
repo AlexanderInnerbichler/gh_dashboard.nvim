@@ -155,6 +155,7 @@ M.open = function(username, date)
   vim.wo[win].signcolumn     = "no"
   vim.wo[win].cursorline     = true
   vim.wo[win].wrap           = false
+  vim.wo[win].foldenable     = false
 
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "", "  Loading…", "" })
   vim.bo[buf].modifiable = false

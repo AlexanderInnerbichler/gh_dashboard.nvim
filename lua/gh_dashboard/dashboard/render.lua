@@ -169,7 +169,7 @@ local function render_activity(lines, hl_specs, activity, err)
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
 end
 
-local function render_repos(lines, hl_specs, items, repos, err)
+local function render_repos(lines, hl_specs, items, repos, err, watched)
   local header = "  Repositories"
   table.insert(lines, header)
   table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
@@ -184,20 +184,26 @@ local function render_repos(lines, hl_specs, items, repos, err)
     table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
   else
     for _, repo in ipairs(repos) do
+      local is_watched = watched and watched[repo.full_name]
+      local prefix = is_watched and "●  " or "   "
       local lock = repo.is_private and "🔒" or " ⊙"
       local lang = sl(repo.language) ~= "" and sl(repo.language) or "—"
       local age  = age_string(repo.updated_at)
-      local line = string.format("   %s  %-30s  %-10s  ★%-3d  %s",
-        lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
+      local line = string.format("%s%s  %-30s  %-10s  ★%-3d  %s",
+        prefix, lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
       table.insert(items, { line = #lines, url = repo.url, full_name = repo.full_name, kind = "repo" })
       table.insert(lines, line)
-      table.insert(hl_specs, { hl = "GhItem", line = #lines - 1, col_s = 0, col_e = 35 })
-      table.insert(hl_specs, { hl = "GhMeta", line = #lines - 1, col_s = 45, col_e = -1 })
+      local ln = #lines - 1
+      table.insert(hl_specs, { hl = "GhItem", line = ln, col_s = 0, col_e = 35 })
+      table.insert(hl_specs, { hl = "GhMeta", line = ln, col_s = 45, col_e = -1 })
+      if is_watched then
+        table.insert(hl_specs, { hl = "GhWatchIndicator", line = ln, col_s = 0, col_e = 3 })
+      end
     end
   end
 end
 
-local function render_org_repos(lines, hl_specs, items, org_repos, err)
+local function render_org_repos(lines, hl_specs, items, org_repos, err, watched)
   if not err and (not org_repos or #org_repos == 0) then return end
 
   local header = "  Organization Repositories"
@@ -210,15 +216,21 @@ local function render_org_repos(lines, hl_specs, items, org_repos, err)
     table.insert(hl_specs, { hl = "GhError", line = #lines - 1, col_s = 0, col_e = #msg })
   else
     for _, repo in ipairs(org_repos) do
+      local is_watched = watched and watched[repo.full_name]
+      local prefix = is_watched and "●  " or "   "
       local lock = repo.is_private and "🔒" or " ⊙"
       local lang = sl(repo.language) ~= "" and sl(repo.language) or "—"
       local age  = age_string(repo.updated_at)
-      local line = string.format("   %s  %-30s  %-10s  ★%-3d  %s",
-        lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
+      local line = string.format("%s%s  %-30s  %-10s  ★%-3d  %s",
+        prefix, lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
       table.insert(items, { line = #lines, url = repo.url, full_name = repo.full_name, kind = "repo" })
       table.insert(lines, line)
-      table.insert(hl_specs, { hl = "GhItem", line = #lines - 1, col_s = 0, col_e = 35 })
-      table.insert(hl_specs, { hl = "GhMeta", line = #lines - 1, col_s = 45, col_e = -1 })
+      local ln = #lines - 1
+      table.insert(hl_specs, { hl = "GhItem", line = ln, col_s = 0, col_e = 35 })
+      table.insert(hl_specs, { hl = "GhMeta", line = ln, col_s = 45, col_e = -1 })
+      if is_watched then
+        table.insert(hl_specs, { hl = "GhWatchIndicator", line = ln, col_s = 0, col_e = 3 })
+      end
     end
   end
 end
@@ -335,7 +347,7 @@ end
 
 --- Build display content for the dashboard.
 --- Returns lines, hl_specs, items tables ready for writing to a buffer.
-function M.build(data, is_loading, is_stale, win_width)
+function M.build(data, is_loading, is_stale, win_width, watched)
   local lines    = {}
   local hl_specs = {}
   local items    = {}
@@ -349,8 +361,8 @@ function M.build(data, is_loading, is_stale, win_width)
   render_prs(lines, hl_specs, items, data.prs, data.prs_err)
   render_issues(lines, hl_specs, items, data.issues, data.issues_err)
   render_activity(lines, hl_specs, data.activity, data.activity_err)
-  render_repos(lines, hl_specs, items, data.repos, data.repos_err)
-  render_org_repos(lines, hl_specs, items, data.org_repos, data.org_repos_err)
+  render_repos(lines, hl_specs, items, data.repos, data.repos_err, watched)
+  render_org_repos(lines, hl_specs, items, data.org_repos, data.org_repos_err, watched)
   render_team_activity(lines, hl_specs, items, data.team_events, data.team_events_err)
   render_watched_users(lines, hl_specs, items, data.watched_events, data.watched_events_err)
 
