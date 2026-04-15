@@ -194,7 +194,7 @@ local function open_win()
 
   local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
   local width  = math.floor(ui.width  * config.get().window_width)
-  local height = math.floor(ui.height * config.get().window_width)
+  local height = math.floor(ui.height * 0.90)
   local row    = math.floor((ui.height - height) / 2)
   local col    = math.floor((ui.width  - width)  / 2)
 

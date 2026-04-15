@@ -112,14 +112,20 @@ local CONTRIB_QUERY = table.concat({
   "} } }",
 }, " ")
 
-function M.contributions(callback)
+local function contributions_attempt(attempts, callback)
   vim.system(
     { "gh", "api", "graphql", "-f", "query=" .. CONTRIB_QUERY },
     { text = true },
     function(result)
       vim.schedule(function()
         if result.code ~= 0 then
-          callback(result.stderr or "graphql error", nil)
+          if attempts < 2 then
+            vim.defer_fn(function()
+              contributions_attempt(attempts + 1, callback)
+            end, 2 ^ attempts * 1000)
+          else
+            callback(result.stderr or "graphql error", nil)
+          end
           return
         end
         local ok, decoded = pcall(vim.fn.json_decode, result.stdout)
@@ -144,6 +150,10 @@ function M.contributions(callback)
       end)
     end
   )
+end
+
+function M.contributions(callback)
+  contributions_attempt(0, callback)
 end
 
 function M.repos(callback)

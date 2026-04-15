@@ -246,7 +246,7 @@ end
 local function mark_seen(entry, ev_id)
   entry.seen_ids = entry.seen_ids or {}
   table.insert(entry.seen_ids, 1, ev_id)
-  if #entry.seen_ids > 50 then entry.seen_ids[51] = nil end
+  if #entry.seen_ids > 50 then table.remove(entry.seen_ids) end
 end
 
 local function poll_repo(entry)
