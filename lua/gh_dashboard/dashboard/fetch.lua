@@ -33,7 +33,7 @@ end
 -- ── fetch functions ────────────────────────────────────────────────────────
 
 function M.profile(callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api", "user", "--jq",
       "{login:.login,name:.name,bio:.bio,followers:.followers,following:.following,public_repos:.public_repos}" },
     callback
@@ -41,7 +41,7 @@ function M.profile(callback)
 end
 
 function M.prs(callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "search", "prs", "--author", "@me", "--state", "open",
       "--json", "number,title,repository,url,createdAt,isDraft" },
     function(err, data)
@@ -63,7 +63,7 @@ function M.prs(callback)
 end
 
 function M.issues(callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "search", "issues", "--assignee", "@me", "--state", "open",
       "--json", "number,title,repository,url,createdAt" },
     function(err, data)
@@ -84,7 +84,7 @@ function M.issues(callback)
 end
 
 function M.activity(login, callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api", "/users/" .. login .. "/events",
       "--jq", "[.[] | {type,repo:.repo.name,created_at}] | .[0:20]" },
     function(err, data)
@@ -147,7 +147,7 @@ function M.contributions(callback)
 end
 
 function M.repos(callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "repo", "list", "--limit", "10",
       "--json", "name,nameWithOwner,url,description,primaryLanguage,stargazerCount,isPrivate,pushedAt" },
     function(err, data)
@@ -171,7 +171,7 @@ function M.repos(callback)
 end
 
 function M.org_repos(callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api", "/user/orgs", "--paginate" },
     function(err, orgs)
       if err or not orgs or #orgs == 0 then
@@ -182,7 +182,7 @@ function M.org_repos(callback)
       local all_repos = {}
       local any_err
       for _, org in ipairs(orgs) do
-        gh.run(
+        gh.run_with_retry(
           { "gh", "repo", "list", org.login, "--limit", "10",
             "--json", "name,nameWithOwner,url,primaryLanguage,stargazerCount,isPrivate,pushedAt" },
           function(ferr, repos)
@@ -216,7 +216,7 @@ function M.org_repos(callback)
 end
 
 function M.team_activity(callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api", "/user/orgs", "--paginate" },
     function(err, orgs)
       if err then callback(err, nil) return end
@@ -225,7 +225,7 @@ function M.team_activity(callback)
       local all_events = {}
       local last_err
       for _, org in ipairs(orgs) do
-        gh.run(
+        gh.run_with_retry(
           { "gh", "api", "/orgs/" .. org.login .. "/events",
             "--jq", "[.[] | {type, actor: .actor.login, repo: .repo.name, created_at, pr_number: .payload.pull_request.number, issue_number: .payload.issue.number}]" },
           function(ferr, events)
@@ -263,7 +263,7 @@ function M.watched_users_activity(callback)
   local all_events = {}
   local last_err
   for _, username in ipairs(users) do
-    gh.run(
+    gh.run_with_retry(
       { "gh", "api", "/users/" .. username .. "/events",
         "--jq", "[.[] | {type, actor: .actor.login, repo: .repo.name, created_at, pr_number: .payload.pull_request.number, issue_number: .payload.issue.number}] | .[0:20]" },
       function(ferr, events)
