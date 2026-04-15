@@ -1,4 +1,5 @@
 local M = {}
+local config     = require("gh_dashboard.config")
 local gh         = require("gh_dashboard.gh")
 local highlights = require("gh_dashboard.highlights")
 
@@ -7,11 +8,7 @@ local highlights = require("gh_dashboard.highlights")
 local WATCHLIST_PATH = vim.fn.expand("~/.config/nvim/gh-watchlist.json")
 local NOTIF_WIDTH    = 60
 local NOTIF_HEIGHT   = 4
-local MAX_NOTIFS     = 3
-local MAX_HISTORY    = 20
-local NOTIF_TTL_MS   = 5000
 local POLL_DELAY_MS  = 5000
-local POLL_REPEAT_MS = 60000
 
 -- ── state ──────────────────────────────────────────────────────────────────
 
@@ -19,7 +16,7 @@ local state = {
   repos        = {},   -- list of { owner, repo, last_seen_id }
   poll_timer   = nil,
   notifs       = {},   -- list of { win, buf, timer, _repo, _ev }
-  history      = {},   -- list of { _repo, _ev } newest-first, max MAX_HISTORY
+  history      = {},   -- list of { _repo, _ev } newest-first
   manager_buf  = nil,
   manager_win  = nil,
 }
@@ -37,6 +34,14 @@ local function load_watchlist()
   local ok, data = pcall(vim.fn.json_decode, table.concat(lines, "\n"))
   if ok and type(data) == "table" and type(data.repos) == "table" then
     state.repos = data.repos
+    -- migrate legacy last_seen_id → seen_ids
+    for _, entry in ipairs(state.repos) do
+      if entry.last_seen_id and not entry.seen_ids then
+        entry.seen_ids    = { tostring(entry.last_seen_id) }
+        entry.last_seen_id = nil
+      end
+      if not entry.seen_ids then entry.seen_ids = {} end
+    end
   end
 end
 
@@ -151,7 +156,7 @@ local function show_notification(repo, ev)
   local ui  = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
 
   -- evict oldest if at cap
-  if #state.notifs >= MAX_NOTIFS then
+  if #state.notifs >= config.get().max_notifications then
     local oldest = table.remove(state.notifs, 1)
     if oldest.timer then oldest.timer:stop() oldest.timer:close() end
     if oldest.win and vim.api.nvim_win_is_valid(oldest.win) then
@@ -217,7 +222,7 @@ local function show_notification(repo, ev)
   vim.keymap.set("n", "<Esc>", close_notif, { buffer = buf, nowait = true, silent = true })
 
   local t = vim.uv.new_timer()
-  t:start(NOTIF_TTL_MS, 0, vim.schedule_wrap(function()
+  t:start(config.get().notification_ttl * 1000, 0, vim.schedule_wrap(function()
     t:stop() t:close()
     close_notif()
   end))
@@ -226,13 +231,26 @@ local function show_notification(repo, ev)
 
   -- keep a history so open_latest works after the popup auto-dismisses
   table.insert(state.history, 1, { _repo = repo, _ev = ev })
-  if #state.history > MAX_HISTORY then table.remove(state.history) end
+  if #state.history > config.get().max_history then table.remove(state.history) end
 end
 
 -- ── polling ────────────────────────────────────────────────────────────────
 
+local function is_new(entry, ev_id)
+  for _, id in ipairs(entry.seen_ids or {}) do
+    if id == ev_id then return false end
+  end
+  return true
+end
+
+local function mark_seen(entry, ev_id)
+  entry.seen_ids = entry.seen_ids or {}
+  table.insert(entry.seen_ids, 1, ev_id)
+  if #entry.seen_ids > 50 then table.remove(entry.seen_ids) end
+end
+
 local function poll_repo(entry)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api",
       "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
       "--jq", "[.[] | {id,type,created_at,payload}] | .[0:10]" },
@@ -240,11 +258,13 @@ local function poll_repo(entry)
       if err or not events or type(events) ~= "table" or #events == 0 then return end
       local new_events = {}
       for _, ev in ipairs(events) do
-        if tostring(ev.id) == tostring(entry.last_seen_id) then break end
-        table.insert(new_events, ev)
+        local ev_id = tostring(ev.id)
+        if is_new(entry, ev_id) then
+          table.insert(new_events, ev)
+          mark_seen(entry, ev_id)
+        end
       end
       if #new_events > 0 then
-        entry.last_seen_id = tostring(events[1].id)
         save_watchlist()
         for _, ev in ipairs(new_events) do
           local ok, err = pcall(show_notification, entry.owner .. "/" .. entry.repo, ev)
@@ -269,7 +289,7 @@ local function seed_history()
         for _, ev in ipairs(events) do
           table.insert(state.history, { _repo = repo_key, _ev = ev })
         end
-        while #state.history > MAX_HISTORY do
+        while #state.history > config.get().max_history do
           table.remove(state.history)
         end
       end
@@ -613,7 +633,7 @@ M.setup = function()
   load_watchlist()
   seed_history()
   state.poll_timer = vim.uv.new_timer()
-  state.poll_timer:start(POLL_DELAY_MS, POLL_REPEAT_MS, vim.schedule_wrap(poll))
+  state.poll_timer:start(POLL_DELAY_MS, config.get().poll_interval * 1000, vim.schedule_wrap(poll))
   highlights.setup()
 end
 

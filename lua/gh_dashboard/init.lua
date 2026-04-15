@@ -1,12 +1,9 @@
 local M = {}
+local config     = require("gh_dashboard.config")
 local heatmap    = require("gh_dashboard.heatmap")
 local highlights = require("gh_dashboard.highlights")
 local fetch      = require("gh_dashboard.dashboard.fetch")
 local render     = require("gh_dashboard.dashboard.render")
-
--- ── constants ──────────────────────────────────────────────────────────────
-
-local CACHE_TTL = 300  -- 5 minutes
 
 -- ── state ──────────────────────────────────────────────────────────────────
 
@@ -79,12 +76,25 @@ local function fetch_and_render()
   state.is_loading = true
   apply_render()
 
-  local pending   = 0
-  local any_error = false
+  local pending    = 0
+  local any_error  = false
+  local timed_out  = false
+  local timer      = vim.uv.new_timer()
+
+  timer:start(30000, 0, vim.schedule_wrap(function()
+    if timed_out then return end
+    timed_out = true
+    timer:close()
+    state.is_loading = false
+    apply_render()
+  end))
+
   local function done(had_err)
+    if timed_out then return end
     if had_err then any_error = true end
     pending = pending - 1
     if pending == 0 then
+      timer:close()
       state.is_loading = false
       if not any_error then write_cache(state.data) end
       apply_render()
@@ -183,7 +193,7 @@ local function open_win()
   end
 
   local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.90)
+  local width  = math.floor(ui.width  * config.get().window_width)
   local height = math.floor(ui.height * 0.90)
   local row    = math.floor((ui.height - height) / 2)
   local col    = math.floor((ui.width  - width)  / 2)
@@ -278,7 +288,7 @@ M.toggle = function()
   end
 
   state.data     = read_cache()
-  state.is_stale = cache_age_seconds() >= CACHE_TTL
+  state.is_stale = cache_age_seconds() >= config.get().cache_ttl
 
   open_win()
 
@@ -290,7 +300,8 @@ M.toggle = function()
   end
 end
 
-M.setup = function()
+M.setup = function(opts)
+  config.setup(opts)
   vim.fn.mkdir(vim.fn.expand("~/.cache/nvim"), "p")
   highlights.setup()
 end

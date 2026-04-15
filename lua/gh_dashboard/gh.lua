@@ -20,4 +20,19 @@ function M.run(args, callback)
   end)
 end
 
+--- Run a gh CLI command with up to 2 retries on failure (exponential backoff: 1s, 2s).
+--- callback(err, data): same contract as M.run.
+function M.run_with_retry(args, callback, attempts)
+  attempts = attempts or 0
+  M.run(args, function(err, data)
+    if err and attempts < 2 then
+      vim.defer_fn(function()
+        M.run_with_retry(args, callback, attempts + 1)
+      end, 2 ^ attempts * 1000)
+    else
+      callback(err, data)
+    end
+  end)
+end
+
 return M

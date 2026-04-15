@@ -1,4 +1,10 @@
 if vim.g.gh_dashboard_loaded then return end
 vim.g.gh_dashboard_loaded = true
--- keymaps and setup() are registered lazily via require("gh_dashboard").setup()
--- The plugin entry point is intentionally minimal; consumers call setup() themselves.
+
+vim.api.nvim_create_user_command("GhDashboard", function()
+  require("gh_dashboard").toggle()
+end, { desc = "Toggle GitHub Dashboard" })
+
+vim.api.nvim_create_user_command("GhWatchlist", function()
+  require("gh_dashboard.watchlist").toggle()
+end, { desc = "Toggle GitHub Watchlist manager" })
