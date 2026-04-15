@@ -248,7 +248,7 @@ function M.open_input(hint, on_submit)
     border     = "rounded",
     title      = " " .. hint .. " ",
     title_pos  = "center",
-    footer     = " <C-s> submit  ·  <Esc><Esc> cancel ",
+    footer     = " <C-s> submit  ·  q / <Esc><Esc> cancel ",
     footer_pos = "center",
   })
   vim.wo[state.input_win].number         = false
@@ -271,9 +271,10 @@ function M.open_input(hint, on_submit)
   local function imap(mode, lhs, fn)
     vim.keymap.set(mode, lhs, fn, { buffer = state.input_buf, nowait = true, silent = true })
   end
-  imap("n", "<C-s>",     do_submit)
-  imap("i", "<C-s>",     do_submit)
+  imap("n", "<C-s>",      do_submit)
+  imap("i", "<C-s>",      do_submit)
   imap("n", "<Esc><Esc>", close_input)
+  imap("n", "q",          close_input)
 
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer   = state.input_buf,
