@@ -235,50 +235,6 @@ local function render_org_repos(lines, hl_specs, items, org_repos, err, watched)
   end
 end
 
-local function render_team_activity(lines, hl_specs, items, team_events, err)
-  if not err and team_events == nil then return end
-
-  local header = "  Team Activity"
-  table.insert(lines, header)
-  table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
-
-  if err then
-    local msg = "  ✗ " .. sl(err)
-    table.insert(lines, msg)
-    table.insert(hl_specs, { hl = "GhError", line = #lines - 1, col_s = 0, col_e = #msg })
-  elseif #team_events == 0 then
-    local msg = "   No recent team activity"
-    table.insert(lines, msg)
-    table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
-  else
-    for _, ev in ipairs(team_events) do
-      local actor = sl(ev.actor or "?"):sub(1, 18)
-      local icon  = EVENT_ICONS[ev.type] or "·"
-      local repo  = sl(ev.repo or "?"):sub(1, 30)
-      local age   = age_string(ev.created_at)
-      local line  = string.format("   %-18s  %s  %-30s  %s", actor, icon, repo, age)
-      if ev.type == "PullRequestEvent" and ev.pr_number and ev.pr_number ~= vim.NIL then
-        table.insert(items, { line = #lines, kind = "pr", number = ev.pr_number, repo = ev.repo })
-      elseif ev.type == "IssuesEvent" and ev.issue_number and ev.issue_number ~= vim.NIL then
-        table.insert(items, { line = #lines, kind = "issue", number = ev.issue_number, repo = ev.repo })
-      else
-        table.insert(items, { line = #lines, kind = "push", url = "https://github.com/" .. (ev.repo or "") })
-      end
-      table.insert(lines, line)
-      local icon_hl  = "GhStats"
-      if ev.type == "PushEvent"        then icon_hl = "GhPush"
-      elseif ev.type == "PullRequestEvent" then icon_hl = "GhPR"
-      elseif ev.type == "IssuesEvent" or ev.type == "IssueCommentEvent" then icon_hl = "GhIssue"
-      end
-      local icon_col = 3 + 18 + 2
-      table.insert(hl_specs, { hl = icon_hl,   line = #lines - 1, col_s = icon_col, col_e = icon_col + #icon })
-      table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 3,        col_e = 3 + 18 })
-      table.insert(hl_specs, { hl = "GhMeta",  line = #lines - 1, col_s = icon_col + #icon + 2 + 30 + 2, col_e = -1 })
-    end
-  end
-  table.insert(lines, separator())
-  table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
-end
 
 local function render_watched_users(lines, hl_specs, items, events, err)
   if not err and events == nil then return end
@@ -363,7 +319,6 @@ function M.build(data, is_loading, is_stale, win_width, watched)
   render_activity(lines, hl_specs, data.activity, data.activity_err)
   render_repos(lines, hl_specs, items, data.repos, data.repos_err, watched)
   render_org_repos(lines, hl_specs, items, data.org_repos, data.org_repos_err, watched)
-  render_team_activity(lines, hl_specs, items, data.team_events, data.team_events_err)
   render_watched_users(lines, hl_specs, items, data.watched_events, data.watched_events_err)
 
   return lines, hl_specs, items

@@ -225,47 +225,6 @@ function M.org_repos(callback)
   )
 end
 
-function M.team_activity(callback)
-  gh.run_with_retry(
-    { "gh", "api", "/user/orgs", "--paginate" },
-    function(err, orgs)
-      if err then callback(err, nil) return end
-      if not orgs or #orgs == 0 then callback(nil, nil) return end
-      local pending    = #orgs
-      local all_events = {}
-      local last_err
-      for _, org in ipairs(orgs) do
-        gh.run_with_retry(
-          { "gh", "api", "/orgs/" .. org.login .. "/events",
-            "--jq", "[.[] | {type, actor: .actor.login, repo: .repo.name, created_at, pr_number: .payload.pull_request.number, issue_number: .payload.issue.number}]" },
-          function(ferr, events)
-            if ferr then
-              last_err = ferr
-            else
-              for _, ev in ipairs(events or {}) do
-                table.insert(all_events, ev)
-              end
-            end
-            pending = pending - 1
-            if pending == 0 then
-              table.sort(all_events, function(a, b)
-                return (a.created_at or "") > (b.created_at or "")
-              end)
-              local top = {}
-              for i = 1, math.min(10, #all_events) do top[i] = all_events[i] end
-              if #top == 0 and last_err then
-                callback(last_err, nil)
-              else
-                callback(nil, top)
-              end
-            end
-          end
-        )
-      end
-    end
-  )
-end
-
 function M.watched_users_activity(callback)
   local users = require("gh_dashboard.user_watchlist").get_users()
   if not users or #users == 0 then callback(nil, nil) return end

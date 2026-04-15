@@ -104,7 +104,7 @@ local function fetch_and_render()
   local login = state.data and state.data.profile and state.data.profile.login
 
   local function start_secondary_fetches()
-    pending = pending + 6
+    pending = pending + 5
     fetch.prs(function(err, prs)
       if err then state.data.prs_err = err else state.data.prs = prs end
       done(err ~= nil)
@@ -119,10 +119,6 @@ local function fetch_and_render()
     end)
     fetch.org_repos(function(err, org_repos)
       if err then state.data.org_repos_err = err else state.data.org_repos = org_repos end
-      done(err ~= nil)
-    end)
-    fetch.team_activity(function(err, events)
-      if err then state.data.team_events_err = err else state.data.team_events = events end
       done(err ~= nil)
     end)
     fetch.watched_users_activity(function(err, events)
