@@ -179,6 +179,7 @@ local function show_notification(repo, ev)
   local line2 = detail ~= "" and ("  " .. detail) or nil
 
   local buf = vim.api.nvim_create_buf(false, true)
+  vim.b[buf].render_markdown = { enabled = false }
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line1, line2 or "", "", "" })

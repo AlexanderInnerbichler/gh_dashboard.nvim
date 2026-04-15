@@ -178,6 +178,7 @@ local function open_popup(title, footer)
   footer = footer or ""
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
     state.buf = vim.api.nvim_create_buf(false, true)
+    vim.b[state.buf].render_markdown = { enabled = false }
     vim.bo[state.buf].buftype    = "nofile"
     vim.bo[state.buf].bufhidden  = "wipe"
     vim.bo[state.buf].modifiable = false
@@ -226,6 +227,7 @@ function M.open_input(hint, on_submit)
   close_input()
 
   state.input_buf = vim.api.nvim_create_buf(false, true)
+  vim.b[state.input_buf].render_markdown = { enabled = false }
   vim.bo[state.input_buf].buftype   = "nofile"
   vim.bo[state.input_buf].bufhidden = "wipe"
   vim.bo[state.input_buf].filetype  = "text"

@@ -187,6 +187,7 @@ end
 local function open_win()
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
     state.buf = vim.api.nvim_create_buf(false, true)
+    vim.b[state.buf].render_markdown = { enabled = false }
     vim.bo[state.buf].bufhidden  = "hide"
     vim.bo[state.buf].buftype    = "nofile"
     vim.bo[state.buf].modifiable = false
