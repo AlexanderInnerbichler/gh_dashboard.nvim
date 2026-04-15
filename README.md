@@ -9,22 +9,46 @@ A GitHub dashboard inside Neovim — contribution heatmap, PR/issue activity, re
 
 ## Installation
 
-**From a local clone** (development):
+**lazy.nvim (deferred — recommended)**:
 ```lua
-{ dir = vim.fn.expand("~/code/gh_dashboard.nvim"), lazy = false }
+{
+  "AlexanderInnerbichler/gh_dashboard.nvim",
+  cmd  = { "GhDashboard", "GhWatchlist" },
+  keys = {
+    { "<leader>gh", "<cmd>GhDashboard<cr>", desc = "GitHub Dashboard" },
+    { "<leader>gw", "<cmd>GhWatchlist<cr>",  desc = "GitHub Watchlist" },
+  },
+  config = function()
+    require("gh_dashboard").setup()
+    require("gh_dashboard.reader").setup()
+    require("gh_dashboard.watchlist").setup()
+    require("gh_dashboard.user_watchlist").setup()
+  end,
+}
 ```
 
-**From GitHub**:
+**lazy.nvim (eager)**:
 ```lua
-{ "innerbichler/gh_dashboard.nvim", lazy = false }
+{ "AlexanderInnerbichler/gh_dashboard.nvim", lazy = false }
+```
+
+**From a local clone** (development):
+```lua
+{ dir = vim.fn.expand("~/gh_dashboard.nvim"), lazy = false, dev = true }
 ```
 
 ## Setup
 
-Call `setup()` after the plugin loads — e.g. in `after/plugin/gh_dashboard.lua`:
-
 ```lua
-require("gh_dashboard").setup()
+require("gh_dashboard").setup({
+  -- all keys are optional; shown values are defaults
+  cache_ttl         = 300,  -- seconds before dashboard cache is stale
+  poll_interval     = 60,   -- seconds between watchlist polls
+  notification_ttl  = 5,    -- seconds before a toast auto-dismisses
+  max_notifications = 3,    -- maximum simultaneous toasts
+  max_history       = 20,   -- maximum notification history entries
+  window_width      = 0.9,  -- window width as fraction of screen (0–1)
+})
 require("gh_dashboard.reader").setup()
 require("gh_dashboard.watchlist").setup()
 require("gh_dashboard.user_watchlist").setup()

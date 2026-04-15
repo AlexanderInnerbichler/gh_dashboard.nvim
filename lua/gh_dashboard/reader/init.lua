@@ -228,7 +228,7 @@ function M.open_input(hint, on_submit)
   state.input_buf = vim.api.nvim_create_buf(false, true)
   vim.bo[state.input_buf].buftype   = "nofile"
   vim.bo[state.input_buf].bufhidden = "wipe"
-  vim.bo[state.input_buf].filetype  = "markdown"
+  vim.bo[state.input_buf].filetype  = "text"
 
   vim.api.nvim_buf_set_lines(state.input_buf, 0, -1, false, { "", "" })
 
@@ -248,7 +248,7 @@ function M.open_input(hint, on_submit)
     border     = "rounded",
     title      = " " .. hint .. " ",
     title_pos  = "center",
-    footer     = " <C-s> submit  ·  <Esc><Esc> cancel ",
+    footer     = " <C-s> submit  ·  q / <Esc><Esc> cancel ",
     footer_pos = "center",
   })
   vim.wo[state.input_win].number         = false
@@ -271,9 +271,10 @@ function M.open_input(hint, on_submit)
   local function imap(mode, lhs, fn)
     vim.keymap.set(mode, lhs, fn, { buffer = state.input_buf, nowait = true, silent = true })
   end
-  imap("n", "<C-s>",     do_submit)
-  imap("i", "<C-s>",     do_submit)
+  imap("n", "<C-s>",      do_submit)
+  imap("i", "<C-s>",      do_submit)
   imap("n", "<Esc><Esc>", close_input)
+  imap("n", "q",          close_input)
 
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer   = state.input_buf,
@@ -365,35 +366,35 @@ M.open_diff = function(item)
   write_buf({ "", "  Loading diff…" }, {})
 
   vim.keymap.set("v", "c", function()
+    vim.cmd("normal! \27")  -- exit visual mode first so '< '> are committed
     local end_ln = vim.fn.getpos("'>")[2] - 1
     local info   = state.diff_line_map[end_ln]
     if not info then
-      vim.cmd("normal! \27")
       vim.notify("Cannot comment on this line", vim.log.levels.INFO)
       return
     end
     if not state.diff_head_sha or state.diff_head_sha == "" then
-      vim.cmd("normal! \27")
       vim.notify("Still loading, please try again", vim.log.levels.INFO)
       return
     end
-    vim.cmd("normal! \27")
-    M.open_input("Review comment  |  <C-s> submit  ·  <Esc><Esc> cancel", function(body)
-      if body == "" then
-        vim.notify("Comment cannot be empty", vim.log.levels.WARN)
-        return
-      end
-      fetch.post_review_comment(
-        state.diff_item.number, state.diff_item.repo,
-        state.diff_head_sha, info.path, info.line, info.side,
-        body, function(err)
-          if err then
-            vim.notify("Failed: " .. err:gsub("[\n\r]", " "), vim.log.levels.ERROR)
-          else
-            vim.notify("Review comment posted", vim.log.levels.INFO)
-          end
+    vim.schedule(function()  -- defer so startinsert runs after mode transition settles
+      M.open_input("Review comment  |  <C-s> submit  ·  <Esc><Esc> cancel", function(body)
+        if body == "" then
+          vim.notify("Comment cannot be empty", vim.log.levels.WARN)
+          return
         end
-      )
+        fetch.post_review_comment(
+          state.diff_item.number, state.diff_item.repo,
+          state.diff_head_sha, info.path, info.line, info.side,
+          body, function(err)
+            if err then
+              vim.notify("Failed: " .. err:gsub("[\n\r]", " "), vim.log.levels.ERROR)
+            else
+              vim.notify("Review comment posted", vim.log.levels.INFO)
+            end
+          end
+        )
+      end)
     end)
   end, { buffer = state.buf, nowait = true, silent = true })
   require("gh_dashboard.help").setup_keymap(state.buf, "diff")
