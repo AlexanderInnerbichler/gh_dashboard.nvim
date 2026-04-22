@@ -7,6 +7,7 @@ local defaults = {
   max_notifications = 3,     -- maximum simultaneous notification toasts
   max_history       = 20,    -- maximum notification history entries
   window_width      = 0.9,   -- dashboard/reader window width as fraction of screen
+  stale_pr_days     = 7,     -- PRs with no update in this many days get a [stale] tag
 }
 
 local _config = vim.deepcopy(defaults)

@@ -41,25 +41,59 @@ function M.profile(callback)
 end
 
 function M.prs(callback)
-  gh.run_with_retry(
-    { "gh", "search", "prs", "--author", "@me", "--state", "open",
-      "--json", "number,title,repository,url,createdAt,isDraft" },
-    function(err, data)
-      if err then callback(err, nil) return end
-      local prs = {}
-      for _, pr in ipairs(data or {}) do
-        table.insert(prs, {
-          number     = pr.number,
-          title      = pr.title,
-          repo       = type(pr.repository) == "table" and pr.repository.nameWithOwner or repo_from_url(pr.url),
-          url        = pr.url,
-          created_at = pr.createdAt,
-          is_draft   = pr.isDraft,
-        })
+  local seen    = {}   -- key → index in `all`
+  local all     = {}
+  local pending = 3
+  local any_err
+
+  local function collect(err, prs, is_review_query)
+    if err then any_err = err end
+    for _, pr in ipairs(prs or {}) do
+      local key = pr.repo .. "#" .. pr.number
+      if seen[key] then
+        if is_review_query then all[seen[key]].needs_review = true end
+      else
+        if is_review_query then pr.needs_review = true end
+        table.insert(all, pr)
+        seen[key] = #all
       end
-      callback(nil, prs)
     end
-  )
+    pending = pending - 1
+    if pending == 0 then
+      table.sort(all, function(a, b) return (a.updated_at or "") > (b.updated_at or "") end)
+      if any_err and #all == 0 then
+        callback(any_err, nil)
+      else
+        callback(nil, all)
+      end
+    end
+  end
+
+  local function run_query(filter_key, filter_val, is_review_query)
+    gh.run_with_retry(
+      { "gh", "search", "prs", filter_key, filter_val, "--state", "open",
+        "--json", "number,title,repository,url,updatedAt,isDraft" },
+      function(err, data)
+        if err then collect(err, nil, is_review_query) return end
+        local prs = {}
+        for _, pr in ipairs(data or {}) do
+          table.insert(prs, {
+            number     = pr.number,
+            title      = pr.title,
+            repo       = type(pr.repository) == "table" and pr.repository.nameWithOwner or repo_from_url(pr.url),
+            url        = pr.url,
+            updated_at = pr.updatedAt,
+            is_draft   = pr.isDraft,
+          })
+        end
+        collect(nil, prs, is_review_query)
+      end
+    )
+  end
+
+  run_query("--author",           "@me", false)
+  run_query("--assignee",         "@me", false)
+  run_query("--review-requested", "@me", true)
 end
 
 function M.issues(callback)

@@ -1,5 +1,6 @@
-local M = {}
+local M      = {}
 local heatmap = require("gh_dashboard.heatmap")
+local config  = require("gh_dashboard.config")
 
 -- ── helpers ────────────────────────────────────────────────────────────────
 
@@ -19,12 +20,17 @@ end
 
 local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
 
+local function age_seconds(iso8601)
+  if not iso8601 then return 0 end
+  local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+  if not y then return 0 end
+  local t = os.time({ year = y, month = mo, day = d, hour = h, min = mi, sec = s, isdst = false })
+  return os.time(os.date("!*t")) - t
+end
+
 local function age_string(iso8601)
   if not iso8601 then return "" end
-  local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-  if not y then return "" end
-  local t = os.time({ year = y, month = mo, day = d, hour = h, min = mi, sec = s, isdst = false })
-  local diff = os.time(os.date("!*t")) - t
+  local diff = age_seconds(iso8601)
   if diff < 3600 then
     return math.floor(diff / 60) .. "m ago"
   elseif diff < 86400 then
@@ -41,18 +47,20 @@ end
 local function render_profile(lines, hl_specs, profile, total_contrib, win_width, is_loading, is_stale)
   local loading_tag = is_loading and "  [loading…]" or ""
   local stale_tag   = is_stale   and "  [stale]"    or ""
-  local login  = (profile and profile.login)  or "GitHub"
-  local title  = "  GitHub  " .. login .. loading_tag .. stale_tag
+  local login    = (profile and profile.login) or "GitHub"
+  local has_name = profile and profile.name and profile.name ~= "" and profile.name ~= vim.NIL
+  local display  = has_name and (profile.name .. "  @" .. login) or login
+  local title    = "  GitHub  " .. display .. loading_tag .. stale_tag
   table.insert(lines, title)
   local u_start = #"  GitHub  "
   table.insert(hl_specs, { hl = "GhTitle",    line = #lines - 1, col_s = 0,       col_e = u_start })
-  table.insert(hl_specs, { hl = "GhUsername", line = #lines - 1, col_s = u_start, col_e = u_start + #login })
+  table.insert(hl_specs, { hl = "GhUsername", line = #lines - 1, col_s = u_start, col_e = u_start + #display })
   if loading_tag ~= "" then
     table.insert(hl_specs, { hl = "GhStats", line = #lines - 1,
-      col_s = u_start + #login, col_e = u_start + #login + #loading_tag })
+      col_s = u_start + #display, col_e = u_start + #display + #loading_tag })
   end
   if stale_tag ~= "" then
-    local soff = u_start + #login + #loading_tag
+    local soff = u_start + #display + #loading_tag
     table.insert(hl_specs, { hl = "GhStale", line = #lines - 1, col_s = soff, col_e = soff + #stale_tag })
   end
 
@@ -88,17 +96,35 @@ local function render_prs(lines, hl_specs, items, prs, err)
     table.insert(lines, msg)
     table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
   else
+    local cfg             = config.get()
+    local stale_threshold = cfg.stale_pr_days * 86400
     for _, pr in ipairs(prs) do
-      local draft = pr.is_draft and " [draft]" or ""
-      local age   = age_string(pr.created_at)
-      local title = pr.title:gsub("[\n\r]", " "):sub(1, 45)
-      local repo  = pr.repo:gsub("[\n\r]", " "):sub(1, 25)
-      local line  = string.format("   #%-4d  %-45s  %-25s  %s%s",
-        pr.number, title, repo, age, draft)
+      local age    = age_string(pr.updated_at)
+      local review = pr.needs_review and " [review]" or ""
+      local draft  = pr.is_draft    and " [draft]"  or ""
+      local stale  = age_seconds(pr.updated_at) > stale_threshold and " [stale]" or ""
+      local title  = pr.title:gsub("[\n\r]", " "):sub(1, 45)
+      local repo   = pr.repo:gsub("[\n\r]", " "):sub(1, 25)
+      local line   = string.format("   #%-4d  %-45s  %-25s  %s%s%s%s",
+        pr.number, title, repo, age, review, draft, stale)
       table.insert(items, { line = #lines, url = pr.url, kind = "pr", number = pr.number, repo = pr.repo, title = pr.title })
       table.insert(lines, line)
-      table.insert(hl_specs, { hl = "GhItem", line = #lines - 1, col_s = 0, col_e = 9 })
-      table.insert(hl_specs, { hl = "GhMeta", line = #lines - 1, col_s = 57, col_e = -1 })
+      local ln       = #lines - 1
+      local age_col  = 3 + 1 + 4 + 2 + 45 + 2 + 25 + 2   -- = 84
+      local tag_col  = age_col + #age
+      table.insert(hl_specs, { hl = "GhItem",    line = ln, col_s = 0,       col_e = 9 })
+      table.insert(hl_specs, { hl = "GhMeta",    line = ln, col_s = age_col, col_e = tag_col })
+      if review ~= "" then
+        table.insert(hl_specs, { hl = "GhPRReview", line = ln, col_s = tag_col,            col_e = tag_col + #review })
+      end
+      if draft ~= "" then
+        local d_col = tag_col + #review
+        table.insert(hl_specs, { hl = "GhMeta", line = ln, col_s = d_col, col_e = d_col + #draft })
+      end
+      if stale ~= "" then
+        local s_col = tag_col + #review + #draft
+        table.insert(hl_specs, { hl = "GhStale", line = ln, col_s = s_col, col_e = s_col + #stale })
+      end
     end
   end
   table.insert(lines, separator())
