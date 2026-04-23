@@ -79,6 +79,30 @@ local DUCK_COLS = 14
 local GRASS_PAT   = { 2,4,1,3,2,1,4,3,1,2,3,4,1,2,5,3,1,4,2,3 }
 local GRASS_PAT_N = #GRASS_PAT
 
+local TIER_TO_HEIGHT = { 1, 2, 3, 3, 4, 5 }  -- contribution tier 1-6 → grass height 1-5
+
+local function build_grass_pattern(contributions)
+  if not contributions or not contributions.weeks then return GRASS_PAT end
+  local days = {}
+  for i = #contributions.weeks, 1, -1 do
+    local week = contributions.weeks[i]
+    if week then
+      for j = 7, 1, -1 do
+        if week[j] then table.insert(days, week[j]) end
+      end
+    end
+  end
+  local pat = {}
+  for i = 1, GRASS_PAT_N do
+    local day    = days[i]
+    local tier   = (day and day.tier) or 1
+    local base   = TIER_TO_HEIGHT[tier] or 1
+    local jitter = GRASS_PAT[i] % 3 - 1
+    pat[i] = math.max(1, math.min(5, base + jitter))
+  end
+  return pat
+end
+
 local function bot_pos(tr) return 2 * (7 - tr) end
 local function top_pos(tr) return 2 * (7 - tr) + 1 end
 
@@ -308,9 +332,10 @@ M.stop = function()
   end
 end
 
-M.start = function(buf, base_line, interval_ms, win_width, hm_display_w)
+M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contributions)
   local hm_w      = hm_display_w or 58
   local new_max_x = math.max(DUCK_COLS + 1, (win_width or 160) - hm_w - 2)
+  local pat       = build_grass_pattern(contributions)
 
   if state.trigger_timer then
     state.buf       = buf
@@ -318,7 +343,7 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w)
     state.max_x     = new_max_x
     state.grass_h   = {}
     for sc = 0, state.max_x - 1 do
-      state.grass_h[sc] = GRASS_PAT[sc % GRASS_PAT_N + 1]
+      state.grass_h[sc] = pat[sc % #pat + 1]
     end
     if not state.run_active then draw_grass_only() end
     return
@@ -334,7 +359,7 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w)
 
   state.grass_h = {}
   for sc = 0, state.max_x - 1 do
-    state.grass_h[sc] = GRASS_PAT[sc % GRASS_PAT_N + 1]
+    state.grass_h[sc] = pat[sc % #pat + 1]
   end
 
   local ms = interval_ms or 400

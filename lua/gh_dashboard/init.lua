@@ -101,7 +101,8 @@ local function apply_render()
     -- first heatmap row, which is lines[heatmap_base + 1] in the Lua table.
     local hm_line     = lines[heatmap_base + 1] or ""
     local hm_display_w = vim.api.nvim_strwidth(hm_line)
-    duck.start(state.buf, heatmap_base, interval_ms, win_width, hm_display_w)
+    duck.start(state.buf, heatmap_base, interval_ms, win_width, hm_display_w,
+               state.data and state.data.contributions)
   end
 end
 
