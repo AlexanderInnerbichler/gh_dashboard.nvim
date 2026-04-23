@@ -10,13 +10,21 @@ local function repo_from_url(url)
 end
 
 local function event_summary(ev)
-  local t = ev.type or "Event"
+  local t      = ev.type   or "Event"
+  local action = ev.action
   if t == "PushEvent" then
     return "pushed commits"
   elseif t == "PullRequestEvent" then
-    return "PR activity"
+    if     action == "opened"      then return "opened PR"
+    elseif action == "closed"      then return (ev.merged == true) and "merged PR" or "closed PR"
+    elseif action == "reopened"    then return "reopened PR"
+    elseif action == "synchronize" then return "pushed to PR"
+    else                                return "PR activity" end
   elseif t == "IssuesEvent" then
-    return "issue activity"
+    if     action == "opened"   then return "opened issue"
+    elseif action == "closed"   then return "closed issue"
+    elseif action == "reopened" then return "reopened issue"
+    else                             return "issue activity" end
   elseif t == "IssueCommentEvent" then
     return "commented on issue"
   elseif t == "CreateEvent" then
@@ -120,16 +128,20 @@ end
 function M.activity(login, callback)
   gh.run_with_retry(
     { "gh", "api", "/users/" .. login .. "/events",
-      "--jq", "[.[] | {type,repo:.repo.name,created_at}] | .[0:20]" },
+      "--jq", "[.[] | {type, repo:.repo.name, created_at, action:.payload.action, merged:.payload.pull_request.merged, pr_number:.payload.pull_request.number, issue_number:.payload.issue.number}] | .[0:20]" },
     function(err, data)
       if err then callback(err, nil) return end
       local events = {}
       for _, ev in ipairs(data or {}) do
         table.insert(events, {
-          type       = ev.type,
-          repo       = ev.repo,
-          created_at = ev.created_at,
-          summary    = event_summary(ev),
+          type         = ev.type,
+          repo         = ev.repo,
+          created_at   = ev.created_at,
+          action       = ev.action,
+          merged       = ev.merged,
+          pr_number    = ev.pr_number,
+          issue_number = ev.issue_number,
+          summary      = event_summary(ev),
         })
       end
       callback(nil, events)
@@ -268,7 +280,7 @@ function M.watched_users_activity(callback)
   for _, username in ipairs(users) do
     gh.run_with_retry(
       { "gh", "api", "/users/" .. username .. "/events",
-        "--jq", "[.[] | {type, actor: .actor.login, repo: .repo.name, created_at, pr_number: .payload.pull_request.number, issue_number: .payload.issue.number}] | .[0:20]" },
+        "--jq", "[.[] | {type, actor: .actor.login, repo: .repo.name, created_at, action:.payload.action, merged:.payload.pull_request.merged, pr_number:.payload.pull_request.number, issue_number:.payload.issue.number}] | .[0:20]" },
       function(ferr, events)
         if ferr then
           last_err = ferr

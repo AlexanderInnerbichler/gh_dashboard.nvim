@@ -20,6 +20,11 @@ end
 
 local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
 
+local function trunc(s, n)
+  s = sl(s)
+  return #s > n and s:sub(1, n - 1) .. "…" or s
+end
+
 local function age_seconds(iso8601)
   if not iso8601 then return 0 end
   local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
@@ -31,14 +36,13 @@ end
 local function age_string(iso8601)
   if not iso8601 then return "" end
   local diff = age_seconds(iso8601)
-  if diff < 3600 then
-    return math.floor(diff / 60) .. "m ago"
-  elseif diff < 86400 then
-    return math.floor(diff / 3600) .. "h ago"
-  elseif diff < 604800 then
-    return math.floor(diff / 86400) .. "d ago"
-  else
-    return math.floor(diff / 604800) .. "w ago"
+  if     diff < 60        then return "just now"
+  elseif diff < 3600      then return math.floor(diff / 60)       .. "m ago"
+  elseif diff < 86400     then return math.floor(diff / 3600)     .. "h ago"
+  elseif diff < 604800    then return math.floor(diff / 86400)    .. "d ago"
+  elseif diff < 2592000   then return math.floor(diff / 604800)   .. "w ago"
+  elseif diff < 31536000  then return math.floor(diff / 2592000)  .. "mo ago"
+  else                         return math.floor(diff / 31536000) .. "y ago"
   end
 end
 
@@ -82,8 +86,9 @@ local function render_profile(lines, hl_specs, profile, total_contrib, win_width
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
 end
 
-local function render_prs(lines, hl_specs, items, prs, err)
-  local header = "  Pull Requests"
+local function render_prs(lines, hl_specs, items, prs, err, win_width)
+  local count  = (not err and prs) and #prs or nil
+  local header = count ~= nil and ("  Pull Requests (" .. count .. ")") or "  Pull Requests"
   table.insert(lines, header)
   table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
 
@@ -98,41 +103,44 @@ local function render_prs(lines, hl_specs, items, prs, err)
   else
     local cfg             = config.get()
     local stale_threshold = cfg.stale_pr_days * 86400
+    -- fixed overhead: 3 (indent) + 1 (#) + 4 (num) + 2 + 25 (repo) + 2 + 2 = 39; ~32 for age+tags
+    local title_w = math.min(60, math.max(30, (win_width or 120) - 39 - 32))
+    local age_col = 3 + 1 + 4 + 2 + title_w + 2 + 25 + 2
     for _, pr in ipairs(prs) do
       local age    = age_string(pr.updated_at)
-      local review = pr.needs_review and " [review]" or ""
       local draft  = pr.is_draft    and " [draft]"  or ""
+      local review = pr.needs_review and " [review]" or ""
       local stale  = age_seconds(pr.updated_at) > stale_threshold and " [stale]" or ""
-      local title  = pr.title:gsub("[\n\r]", " "):sub(1, 45)
-      local repo   = pr.repo:gsub("[\n\r]", " "):sub(1, 25)
-      local line   = string.format("   #%-4d  %-45s  %-25s  %s%s%s%s",
-        pr.number, title, repo, age, review, draft, stale)
+      local title  = trunc(pr.title, title_w)
+      local repo   = trunc(pr.repo,  25)
+      local fmt    = "   #%-4d  %-" .. title_w .. "s  %-25s  %s%s%s%s"
+      local line   = string.format(fmt, pr.number, title, repo, age, draft, review, stale)
       table.insert(items, { line = #lines, url = pr.url, kind = "pr", number = pr.number, repo = pr.repo, title = pr.title })
       table.insert(lines, line)
-      local ln       = #lines - 1
-      local age_col  = 3 + 1 + 4 + 2 + 45 + 2 + 25 + 2   -- = 84
-      local tag_col  = age_col + #age
-      table.insert(hl_specs, { hl = "GhItem",    line = ln, col_s = 0,       col_e = 9 })
-      table.insert(hl_specs, { hl = "GhMeta",    line = ln, col_s = age_col, col_e = tag_col })
-      if review ~= "" then
-        table.insert(hl_specs, { hl = "GhPRReview", line = ln, col_s = tag_col,            col_e = tag_col + #review })
-      end
+      local ln      = #lines - 1
+      local tag_col = age_col + #age
+      table.insert(hl_specs, { hl = "GhItem", line = ln, col_s = 0,       col_e = 9 })
+      table.insert(hl_specs, { hl = "GhMeta", line = ln, col_s = age_col, col_e = tag_col })
       if draft ~= "" then
-        local d_col = tag_col + #review
-        table.insert(hl_specs, { hl = "GhMeta", line = ln, col_s = d_col, col_e = d_col + #draft })
+        table.insert(hl_specs, { hl = "GhPRDraft",  line = ln, col_s = tag_col,          col_e = tag_col + #draft })
+      end
+      if review ~= "" then
+        local r_col = tag_col + #draft
+        table.insert(hl_specs, { hl = "GhPRReview", line = ln, col_s = r_col, col_e = r_col + #review })
       end
       if stale ~= "" then
-        local s_col = tag_col + #review + #draft
-        table.insert(hl_specs, { hl = "GhStale", line = ln, col_s = s_col, col_e = s_col + #stale })
+        local s_col = tag_col + #draft + #review
+        table.insert(hl_specs, { hl = "GhStale",    line = ln, col_s = s_col, col_e = s_col + #stale })
       end
     end
   end
-  table.insert(lines, separator())
+  table.insert(lines, separator(win_width))
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
 end
 
-local function render_issues(lines, hl_specs, items, issues, err)
-  local header = "  Assigned Issues"
+local function render_issues(lines, hl_specs, items, issues, err, win_width)
+  local count  = (not err and issues) and #issues or nil
+  local header = count ~= nil and ("  Assigned Issues (" .. count .. ")") or "  Assigned Issues"
   table.insert(lines, header)
   table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
 
@@ -145,19 +153,21 @@ local function render_issues(lines, hl_specs, items, issues, err)
     table.insert(lines, msg)
     table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
   else
+    local title_w = math.min(60, math.max(30, (win_width or 120) - 39 - 32))
+    local age_col = 3 + 1 + 4 + 2 + title_w + 2 + 25 + 2
     for _, iss in ipairs(issues) do
       local age   = age_string(iss.created_at)
-      local title = iss.title:gsub("[\n\r]", " "):sub(1, 45)
-      local repo  = iss.repo:gsub("[\n\r]", " "):sub(1, 25)
-      local line  = string.format("   #%-4d  %-45s  %-25s  %s",
-        iss.number, title, repo, age)
+      local title = trunc(iss.title, title_w)
+      local repo  = trunc(iss.repo,  25)
+      local fmt   = "   #%-4d  %-" .. title_w .. "s  %-25s  %s"
+      local line  = string.format(fmt, iss.number, title, repo, age)
       table.insert(items, { line = #lines, url = iss.url, kind = "issue", number = iss.number, repo = iss.repo })
       table.insert(lines, line)
-      table.insert(hl_specs, { hl = "GhItem", line = #lines - 1, col_s = 0, col_e = 9 })
-      table.insert(hl_specs, { hl = "GhMeta", line = #lines - 1, col_s = 57, col_e = -1 })
+      table.insert(hl_specs, { hl = "GhItem", line = #lines - 1, col_s = 0,       col_e = 9 })
+      table.insert(hl_specs, { hl = "GhMeta", line = #lines - 1, col_s = age_col, col_e = -1 })
     end
   end
-  table.insert(lines, separator())
+  table.insert(lines, separator(win_width))
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
 end
 
@@ -180,7 +190,7 @@ local function render_activity(lines, hl_specs, activity, err)
       local icon = EVENT_ICONS[ev.type] or "·"
       local age  = age_string(ev.created_at)
       local line = string.format("   %s  %-30s  %-35s  %s",
-        icon, sl(ev.summary):sub(1, 30), sl(ev.repo or ""):sub(1, 35), age)
+        icon, trunc(ev.summary or "", 30), trunc(ev.repo or "", 35), age)
       table.insert(lines, line)
       local icon_hl = "GhStats"
       if ev.type == "PushEvent"        then icon_hl = "GhPush"
@@ -196,7 +206,8 @@ local function render_activity(lines, hl_specs, activity, err)
 end
 
 local function render_repos(lines, hl_specs, items, repos, err, watched)
-  local header = "  Repositories"
+  local count  = (not err and repos) and #repos or nil
+  local header = count ~= nil and ("  Repositories (" .. count .. ")") or "  Repositories"
   table.insert(lines, header)
   table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
 
@@ -216,7 +227,7 @@ local function render_repos(lines, hl_specs, items, repos, err, watched)
       local lang = sl(repo.language) ~= "" and sl(repo.language) or "—"
       local age  = age_string(repo.updated_at)
       local line = string.format("%s%s  %-30s  %-10s  ★%-3d  %s",
-        prefix, lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
+        prefix, lock, trunc(repo.name, 30), lang:sub(1, 10), repo.stars, age)
       table.insert(items, { line = #lines, url = repo.url, full_name = repo.full_name, kind = "repo" })
       table.insert(lines, line)
       local ln = #lines - 1
@@ -248,7 +259,7 @@ local function render_org_repos(lines, hl_specs, items, org_repos, err, watched)
       local lang = sl(repo.language) ~= "" and sl(repo.language) or "—"
       local age  = age_string(repo.updated_at)
       local line = string.format("%s%s  %-30s  %-10s  ★%-3d  %s",
-        prefix, lock, sl(repo.name):sub(1, 30), lang:sub(1, 10), repo.stars, age)
+        prefix, lock, trunc(repo.name, 30), lang:sub(1, 10), repo.stars, age)
       table.insert(items, { line = #lines, url = repo.url, full_name = repo.full_name, kind = "repo" })
       table.insert(lines, line)
       local ln = #lines - 1
@@ -260,7 +271,6 @@ local function render_org_repos(lines, hl_specs, items, org_repos, err, watched)
     end
   end
 end
-
 
 local function render_watched_users(lines, hl_specs, items, events, err)
   if not err and events == nil then return end
@@ -298,7 +308,7 @@ local function render_watched_users(lines, hl_specs, items, events, err)
 
       for _, ev in ipairs(actor_events[actor]) do
         local icon = EVENT_ICONS[ev.type] or "·"
-        local repo = sl(ev.repo or "?"):sub(1, 32)
+        local repo = trunc(ev.repo or "?", 32)
         local age  = age_string(ev.created_at)
         local line = string.format("      %s  %-32s  %s", icon, repo, age)
         if ev.type == "PullRequestEvent" and ev.pr_number and ev.pr_number ~= vim.NIL then
@@ -340,8 +350,8 @@ function M.build(data, is_loading, is_stale, win_width, watched)
     win_width, is_loading, is_stale)
   local login = data.profile and data.profile.login
   heatmap.render_heatmap(lines, hl_specs, data.contributions, items, login)
-  render_prs(lines, hl_specs, items, data.prs, data.prs_err)
-  render_issues(lines, hl_specs, items, data.issues, data.issues_err)
+  render_prs(lines, hl_specs, items, data.prs, data.prs_err, win_width)
+  render_issues(lines, hl_specs, items, data.issues, data.issues_err, win_width)
   render_activity(lines, hl_specs, data.activity, data.activity_err)
   render_repos(lines, hl_specs, items, data.repos, data.repos_err, watched)
   render_org_repos(lines, hl_specs, items, data.org_repos, data.org_repos_err, watched)

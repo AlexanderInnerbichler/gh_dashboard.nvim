@@ -19,6 +19,7 @@ local function apply()
   vim.api.nvim_set_hl(0, "GhPR",        { fg = "#b48ead",                bg = "NONE" })
   vim.api.nvim_set_hl(0, "GhIssue",     { fg = "#e5c07b",                bg = "NONE" })
   vim.api.nvim_set_hl(0, "GhPRReview",  { fg = "#61afef",                bg = "NONE" })
+  vim.api.nvim_set_hl(0, "GhPRDraft",   { fg = "#616e88", italic = true,  bg = "NONE" })
   -- heatmap tiers
   vim.api.nvim_set_hl(0, "GhHeat0", { fg = "#1b1f2b", bg = "NONE" })
   vim.api.nvim_set_hl(0, "GhHeat1", { fg = "#0d4a3a", bg = "NONE" })
