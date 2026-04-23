@@ -13,16 +13,18 @@ local COLORS = {
   "#b89472",  -- 6  feet / legs
   "#8a6438",  -- 7  deep shadow
   "#d8c08a",  -- 8  belly highlight
-  "#1e3d1e",  -- 9  grass root / shadow
-  "#2d5a2d",  -- 10 grass lower stem
-  "#3a6b3a",  -- 11 grass mid stem
-  "#4a8a50",  -- 12 grass upper / blend
-  "#0a7a5c",  -- 13 grass body  (GhHeat2)
-  "#10c87e",  -- 14 grass tip   (GhHeat3)
+  "#2d6b2d",  -- 9  bg grass root   (lighter than fg)
+  "#3d8840",  -- 10 bg lower stem   (medium green)
+  "#4ea055",  -- 11 bg mid stem     (vibrant)
+  "#5ab85e",  -- 12 bg upper/blend  (bright)
+  "#12a878",  -- 13 bg body         (bright teal-green)
+  "#20e890",  -- 14 bg tip          (sunlit, clearly lighter than fg)
   "#0d1f0d",  -- 15 fg root  (near-black green)
   "#142b14",  -- 16 fg stem  (dark forest shadow)
   "#1a3f1a",  -- 17 fg mid   (still dark)
   "#0a4a2a",  -- 18 fg tip   (dark teal)
+  "#5ba8d8",  -- 19 flower blue
+  "#e8f0f8",  -- 20 flower white
 }
 local GRASS_COLORS    = { 9, 10, 11, 12, 13, 14 }
 local FG_GRASS_COLORS = { 15, 16, 17, 18 }
@@ -86,7 +88,7 @@ local DUCK_COLS = 14
 
 local GRASS_PAT      = { 2,4,1,3,2,1,4,3,1,2,3,4,1,2,5,3,1,4,2,3 }
 local GRASS_PAT_N    = #GRASS_PAT
-local FG_BLADE_PAT   = { 0,0,4,3,0,0,3,0,0,4,3,0,0,2,3,0,0,4,0,3,2,0,0 }  -- 23 elems (prime vs 20)
+local FG_BLADE_PAT   = { 0,0,4,3,0,0,6,0,0,4,3,0,0,2,3,0,5,4,0,3,2,0,0 }  -- 23 elems (prime vs 20)
 local FG_BLADE_PAT_N = #FG_BLADE_PAT
 
 local TIER_TO_HEIGHT = { 3, 4, 5, 6, 7, 8 }  -- contribution tier 1-6 → grass height 3-8
@@ -128,10 +130,18 @@ end
 local function bot_pos(tr) return 2 * (7 - tr) end
 local function top_pos(tr) return 2 * (7 - tr) + 1 end
 
+-- fh=5 = blue flower, fh=6 = white flower; both have effective stem height 4.
+local function fg_eff_h(fh)
+  return (fh == 5 or fh == 6) and 4 or fh
+end
+
 local function fg_grass_color(pixel_pos, fh)
-  if fh <= 1 then return FG_GRASS_COLORS[1] end
+  local eff = fg_eff_h(fh)
+  if eff <= 1 then return FG_GRASS_COLORS[1] end
+  if fh == 5 and pixel_pos >= 2 then return 19 end  -- blue flower head
+  if fh == 6 and pixel_pos >= 2 then return 20 end  -- white flower head
   if pixel_pos == 0      then return FG_GRASS_COLORS[1] end  -- root shadow
-  if pixel_pos >= fh - 1 then return FG_GRASS_COLORS[4] end  -- dark tip
+  if pixel_pos >= eff - 1 then return FG_GRASS_COLORS[4] end -- dark tip
   if pixel_pos == 1      then return FG_GRASS_COLORS[2] end  -- lower stem
   return FG_GRASS_COLORS[3]                                   -- mid stem
 end
@@ -156,7 +166,7 @@ local hl_cache = {}
 local hl_count = 0
 
 local function hl_for(fg_idx, bg_idx)
-  local key = fg_idx * 16 + bg_idx
+  local key = fg_idx * 32 + bg_idx
   if hl_cache[key] then return hl_cache[key] end
   hl_count = hl_count + 1
   local name = "GhDuckPx" .. hl_count
@@ -207,9 +217,10 @@ local function build_body_vt(art, tr, duck_x, zone_start, zone_w, grass_h, fg_gr
       b = row_bot[dc + 1] or 0
     end
     if tr == 6 and fg_grass_h then
-      local fg = fg_grass_h[wc] or 0
-      if fg >= tp + 1 then t = fg_grass_color(tp, fg) end
-      if fg >= bp + 1 then b = fg_grass_color(bp, fg) end
+      local fg  = fg_grass_h[wc] or 0
+      local fgh = fg_eff_h(fg)
+      if fgh >= tp + 1 then t = fg_grass_color(tp, fg) end
+      if fgh >= bp + 1 then b = fg_grass_color(bp, fg) end
     end
     local gh = (tr >= 4) and (grass_h[wc] or 0) or 0
     local gt = (t == 0 and gh >= tp + 1) and grass_color(tp, gh) or 0
@@ -227,9 +238,10 @@ local function build_legs_vt(legs_row, duck_x, zone_start, zone_w, grass_h, fg_g
     local t  = (legs_row and dc >= 0 and dc < DUCK_COLS) and (legs_row[dc + 1] or 0) or 0
     local gh = grass_h[wc] or 0
     local fg = (fg_grass_h and fg_grass_h[wc]) or 0
-    local t_final  = (fg >= 2) and fg_grass_color(1, fg) or t
+    local fgh = fg_eff_h(fg)
+    local t_final  = (fgh >= 2) and fg_grass_color(1, fg) or t
     local gt_final = (t_final == 0 and gh >= 2) and grass_color(1, gh) or 0
-    local gb_final = (fg >= 1) and fg_grass_color(0, fg) or grass_color(0, gh)
+    local gb_final = (fgh >= 1) and fg_grass_color(0, fg) or grass_color(0, gh)
     table.insert(vt, cell(t_final, 0, gt_final, gb_final))
   end
   return vt
