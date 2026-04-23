@@ -153,18 +153,31 @@ local function render_issues(lines, hl_specs, items, issues, err, win_width)
     table.insert(lines, msg)
     table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
   else
-    local title_w = math.min(60, math.max(30, (win_width or 120) - 39 - 32))
-    local age_col = 3 + 1 + 4 + 2 + title_w + 2 + 25 + 2
+    -- layout: "   <repo(15)>  #<num(4)>  <title>  <age>"
+    -- overhead: 3 + 15 + 2 + 1 + 4 + 2 + 2 = 29; ~10 for age
+    local repo_w  = 15
+    local title_w = math.min(60, math.max(30, (win_width or 120) - 29 - 12))
+    local age_col = 3 + repo_w + 2 + 1 + 4 + 2 + title_w + 2
+    local repo_colors = {}
+    local color_count = 0
     for _, iss in ipairs(issues) do
+      local short_repo = iss.repo:match("[^/]+$") or iss.repo
+      if not repo_colors[iss.repo] then
+        color_count = color_count + 1
+        repo_colors[iss.repo] = (color_count - 1) % 6 + 1
+      end
       local age   = age_string(iss.created_at)
       local title = trunc(iss.title, title_w)
-      local repo  = trunc(iss.repo,  25)
-      local fmt   = "   #%-4d  %-" .. title_w .. "s  %-25s  %s"
-      local line  = string.format(fmt, iss.number, title, repo, age)
+      local repo  = trunc(short_repo, repo_w)
+      local fmt   = "   %-" .. repo_w .. "s  #%-4d  %-" .. title_w .. "s  %s"
+      local line  = string.format(fmt, repo, iss.number, title, age)
       table.insert(items, { line = #lines, url = iss.url, kind = "issue", number = iss.number, repo = iss.repo })
       table.insert(lines, line)
-      table.insert(hl_specs, { hl = "GhItem", line = #lines - 1, col_s = 0,       col_e = 9 })
-      table.insert(hl_specs, { hl = "GhMeta", line = #lines - 1, col_s = age_col, col_e = -1 })
+      local ln       = #lines - 1
+      local num_col  = 3 + repo_w + 2
+      table.insert(hl_specs, { hl = "GhIssueRepo" .. repo_colors[iss.repo], line = ln, col_s = 3,       col_e = 3 + repo_w })
+      table.insert(hl_specs, { hl = "GhItem",                               line = ln, col_s = num_col, col_e = num_col + 6 })
+      table.insert(hl_specs, { hl = "GhMeta",                               line = ln, col_s = age_col, col_e = -1 })
     end
   end
   table.insert(lines, separator(win_width))

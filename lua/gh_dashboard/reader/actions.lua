@@ -59,7 +59,7 @@ end
 
 function M.create_issue(repo, title, body, callback)
   vim.system(
-    { "gh", "issue", "create", "-R", repo, "--title", title, "--body", body },
+    { "gh", "issue", "create", "-R", repo, "--title", title, "--body", body, "--assignee", "@me" },
     { text = true },
     function(result)
       vim.schedule(function()
