@@ -123,9 +123,12 @@ local function top_pos(tr) return 2 * (7 - tr) + 1 end
 
 local function grass_color(pixel_pos, gh)
   if gh <= 1 then return GRASS_COLORS[1] end
-  local frac = pixel_pos / (gh - 1)
-  local idx  = math.floor(frac * (#GRASS_COLORS - 1) + 0.5) + 1
-  return GRASS_COLORS[math.max(1, math.min(#GRASS_COLORS, idx))]
+  if pixel_pos == 0                          then return GRASS_COLORS[1] end  -- root shadow
+  if pixel_pos >= gh - 1                     then return GRASS_COLORS[6] end  -- sunlit tip
+  if pixel_pos >= gh - 2                     then return GRASS_COLORS[5] end  -- near-tip glow
+  if pixel_pos == 1                          then return GRASS_COLORS[2] end  -- lower shadow
+  if gh >= 7 and pixel_pos >= gh - 4         then return GRASS_COLORS[4] end  -- upper body (tall blades)
+  return GRASS_COLORS[3]                                                        -- main stem
 end
 
 -- ── highlight cache ────────────────────────────────────────────────────────
