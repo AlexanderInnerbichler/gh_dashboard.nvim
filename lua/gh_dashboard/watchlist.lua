@@ -123,8 +123,8 @@ local function time_ago(iso)
   if not y then return "" end
   local t    = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
                          hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
-  local tz   = os.difftime(t, os.time(os.date("!*t", t)))
-  local diff = os.time() - (t + tz)
+  local u    = os.date("!*t", t)  u.isdst = nil
+  local diff = os.time() - (t + os.difftime(t, os.time(u)))
   if diff < 3600   then return math.floor(diff / 60)   .. "m ago"
   elseif diff < 86400 then return math.floor(diff / 3600) .. "h ago"
   else                  return math.floor(diff / 86400) .. "d ago" end
@@ -272,12 +272,20 @@ local function poll_repo(entry)
       "--jq", "[.[] | {id,type,created_at,payload}] | .[0:10]" },
     function(err, events)
       if err or not events or type(events) ~= "table" or #events == 0 then return end
-      local new_events = {}
+      local new_events  = {}
+      local notif_items = {}  -- dedup: one notification per issue/PR per poll
       for _, ev in ipairs(events) do
         local ev_id = tostring(ev.id)
         if is_new(entry, ev_id) then
-          table.insert(new_events, ev)
           mark_seen(entry, ev_id)
+          local p   = ev.payload or {}
+          local num = (type(p.issue) == "table" and p.issue.number)
+                   or (type(p.pull_request) == "table" and p.pull_request.number)
+          local key = ev.type .. ":" .. tostring(num or ev_id)
+          if not notif_items[key] then
+            notif_items[key] = true
+            table.insert(new_events, ev)
+          end
         end
       end
       if #new_events > 0 then

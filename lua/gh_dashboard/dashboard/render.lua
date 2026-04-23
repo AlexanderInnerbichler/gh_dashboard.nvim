@@ -30,8 +30,8 @@ local function age_seconds(iso8601)
   local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
   if not y then return 0 end
   local t  = os.time({ year = y, month = mo, day = d, hour = h, min = mi, sec = s })
-  local tz = os.difftime(t, os.time(os.date("!*t", t)))
-  return os.time() - (t + tz)
+  local u  = os.date("!*t", t)  u.isdst = nil
+  return os.time() - (t + os.difftime(t, os.time(u)))
 end
 
 local function age_string(iso8601)

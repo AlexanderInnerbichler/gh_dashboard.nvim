@@ -16,8 +16,8 @@ local function age_string(iso8601)
   if not y then return "" end
   local t    = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
                          hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
-  local tz   = os.difftime(t, os.time(os.date("!*t", t)))
-  local diff = os.time() - (t + tz)
+  local u    = os.date("!*t", t)  u.isdst = nil
+  local diff = os.time() - (t + os.difftime(t, os.time(u)))
   if diff < 3600 then
     return math.floor(diff / 60) .. "m ago"
   elseif diff < 86400 then
