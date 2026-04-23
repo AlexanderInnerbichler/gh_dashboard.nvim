@@ -8,3 +8,7 @@ end, { desc = "Toggle GitHub Dashboard" })
 vim.api.nvim_create_user_command("GhWatchlist", function()
   require("gh_dashboard.watchlist").toggle()
 end, { desc = "Toggle GitHub Watchlist manager" })
+
+vim.api.nvim_create_user_command("GhDebug", function()
+  require("gh_dashboard").debug()
+end, { desc = "Show GhDashboard debug info" })

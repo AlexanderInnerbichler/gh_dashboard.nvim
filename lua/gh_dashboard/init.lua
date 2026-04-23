@@ -337,6 +337,42 @@ M.setup = function(opts)
   highlights.setup()
 end
 
+M.debug = function()
+  local d   = duck.debug_info()
+  local age = cache_age_seconds()
+  local ttl = config.get().cache_ttl
+
+  local function yesno(v) return v and "yes" or "no" end
+  local function fmt_secs(s)
+    if s == nil then return "n/a" end
+    if s == math.huge then return "∞" end
+    if s >= 60 then return string.format("%dm %ds", math.floor(s / 60), s % 60) end
+    return s .. "s"
+  end
+
+  local next_trig = d.run_active and ("running (" .. d.passes_done .. "/" .. d.passes_total .. " passes)")
+    or fmt_secs(d.secs_until_next)
+
+  local lines = {
+    "── GhDashboard Debug ──────────────────",
+    "Duck:",
+    "  session active  : " .. yesno(d.session_active),
+    "  run active      : " .. yesno(d.run_active),
+    "  passes          : " .. d.passes_done .. " / " .. d.passes_total,
+    "  x position      : " .. d.x .. " / " .. d.max_x,
+    "  tick            : " .. d.tick,
+    "  next trigger    : " .. next_trig,
+    "Cache:",
+    "  age             : " .. fmt_secs(age),
+    "  ttl             : " .. fmt_secs(ttl),
+    "  stale           : " .. yesno(age >= ttl),
+    "Dashboard:",
+    "  window open     : " .. yesno(state.win and vim.api.nvim_win_is_valid(state.win)),
+    "  loading         : " .. yesno(state.is_loading),
+  }
+  vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, { title = "GhDashboard" })
+end
+
 M.focus_win = function()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_set_current_win(state.win)

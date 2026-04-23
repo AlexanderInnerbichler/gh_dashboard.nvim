@@ -166,20 +166,88 @@ end
 -- ── module state ───────────────────────────────────────────────────────────
 
 local state = {
-  buf        = nil,
-  base_line  = nil,
-  timer      = nil,
-  x          = 0,
-  tick       = 0,
-  foot_frame = 1,
-  wing_step  = 1,
-  max_x      = 40,
-  grass_h    = {},
+  buf              = nil,
+  base_line        = nil,
+  timer            = nil,
+  trigger_timer    = nil,
+  x                = 0,
+  tick             = 0,
+  foot_frame       = 1,
+  wing_step        = 1,
+  max_x            = 40,
+  grass_h          = {},
+  passes_done      = 0,
+  passes_total     = 2,
+  run_active       = false,
+  next_trigger_at  = nil,  -- vim.uv.now() ms value
 }
+
+-- ── run helpers ────────────────────────────────────────────────────────────
+
+local draw  -- forward declaration
+
+local function draw_grass_only()
+  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
+  local mxw     = state.max_x
+  local grass_h = state.grass_h
+  for tr = 5, 6 do
+    local bp = bot_pos(tr)
+    local tp = top_pos(tr)
+    local vt = {}
+    for sc = 0, mxw - 1 do
+      local gh = grass_h[sc]
+      local gt = (gh >= tp + 1) and grass_color(tp, gh) or 0
+      local gb = (gh >= bp + 1) and grass_color(bp, gh) or 0
+      table.insert(vt, cell(0, 0, gt, gb))
+    end
+    vim.api.nvim_buf_set_extmark(state.buf, duck_ns, state.base_line + tr, 0, {
+      virt_text = vt, virt_text_pos = "eol",
+    })
+  end
+  local line7 = state.base_line + 7
+  if vim.api.nvim_buf_line_count(state.buf) > line7 then
+    local vt = {}
+    for sc = 0, mxw - 1 do
+      local gh = grass_h[sc]
+      local gb = (gh >= 1) and grass_color(0, gh) or 0
+      table.insert(vt, cell(0, 0, 0, gb))
+    end
+    vim.api.nvim_buf_set_extmark(state.buf, duck_ns, line7, 0, {
+      virt_text = vt, virt_text_pos = "eol",
+    })
+  end
+end
+
+local function stop_run()
+  if state.timer then
+    state.timer:stop()
+    state.timer:close()
+    state.timer = nil
+  end
+  state.run_active = false
+  if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+    vim.api.nvim_buf_clear_namespace(state.buf, duck_ns, 0, -1)
+    draw_grass_only()
+  end
+end
+
+local function start_run(interval_ms)
+  stop_run()
+  state.passes_total = math.random(2, 3)
+  state.passes_done  = 0
+  state.x            = 0
+  state.tick         = 0
+  state.foot_frame   = 1
+  state.wing_step    = 1
+  state.run_active   = true
+  local t = vim.uv.new_timer()
+  state.timer = t
+  t:start(0, interval_ms or 400, vim.schedule_wrap(draw))
+end
 
 -- ── draw ───────────────────────────────────────────────────────────────────
 
-local function draw()
+draw = function()
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
     M.stop()
     return
@@ -214,7 +282,17 @@ local function draw()
 
   -- Advance counters.
   state.tick = state.tick + 1
-  if state.tick % 2  == 0 then state.x = (state.x + 1) % mxw end
+  if state.tick % 2  == 0 then
+    local nx = (state.x + 1) % mxw
+    if nx < state.x then
+      state.passes_done = state.passes_done + 1
+      if state.passes_done >= state.passes_total then
+        stop_run()
+        return
+      end
+    end
+    state.x = nx
+  end
   if state.tick % 8  == 0 then state.foot_frame = state.foot_frame == 1 and 2 or 1 end
   if state.tick % 24 == 0 then state.wing_step  = state.wing_step  % #WING_SEQ + 1 end
 end
@@ -222,38 +300,81 @@ end
 -- ── public API ─────────────────────────────────────────────────────────────
 
 M.stop = function()
-  if state.timer then
-    state.timer:stop()
-    state.timer:close()
-    state.timer = nil
-  end
-  if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
-    vim.api.nvim_buf_clear_namespace(state.buf, duck_ns, 0, -1)
+  stop_run()
+  if state.trigger_timer then
+    state.trigger_timer:stop()
+    state.trigger_timer:close()
+    state.trigger_timer = nil
   end
 end
 
 M.start = function(buf, base_line, interval_ms, win_width, hm_display_w)
+  local hm_w      = hm_display_w or 58
+  local new_max_x = math.max(DUCK_COLS + 1, (win_width or 160) - hm_w - 2)
+
+  if state.trigger_timer then
+    state.buf       = buf
+    state.base_line = base_line
+    state.max_x     = new_max_x
+    state.grass_h   = {}
+    for sc = 0, state.max_x - 1 do
+      state.grass_h[sc] = GRASS_PAT[sc % GRASS_PAT_N + 1]
+    end
+    if not state.run_active then draw_grass_only() end
+    return
+  end
+
   M.stop()
   hl_cache = {}
   hl_count = 0
 
-  state.buf        = buf
-  state.base_line  = base_line
-  state.x          = 0
-  state.tick       = 0
-  state.foot_frame = 1
-  state.wing_step  = 1
-  local hm_w  = hm_display_w or 58
-  state.max_x = math.max(DUCK_COLS + 1, (win_width or 160) - hm_w - 2)
+  state.buf       = buf
+  state.base_line = base_line
+  state.max_x     = new_max_x
 
   state.grass_h = {}
   for sc = 0, state.max_x - 1 do
     state.grass_h[sc] = GRASS_PAT[sc % GRASS_PAT_N + 1]
   end
 
-  local t = vim.uv.new_timer()
-  state.timer = t
-  t:start(0, interval_ms or 400, vim.schedule_wrap(draw))
+  local ms = interval_ms or 400
+  draw_grass_only()
+
+  -- Re-trigger every 2–4 minutes (randomised each time).
+  local tt = vim.uv.new_timer()
+  state.trigger_timer = tt
+  local function schedule_next()
+    local delay = math.random(120000, 240000)
+    state.next_trigger_at = vim.uv.now() + delay
+    tt:start(delay, 0, vim.schedule_wrap(function()
+      if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
+        M.stop()
+        return
+      end
+      if not state.run_active then
+        start_run(ms)
+      end
+      schedule_next()
+    end))
+  end
+  schedule_next()
+end
+
+M.debug_info = function()
+  local secs_until = nil
+  if state.next_trigger_at then
+    secs_until = math.max(0, math.floor((state.next_trigger_at - vim.uv.now()) / 1000))
+  end
+  return {
+    session_active  = state.trigger_timer ~= nil,
+    run_active      = state.run_active,
+    passes_done     = state.passes_done,
+    passes_total    = state.passes_total,
+    x               = state.x,
+    max_x           = state.max_x,
+    tick            = state.tick,
+    secs_until_next = secs_until,
+  }
 end
 
 return M
