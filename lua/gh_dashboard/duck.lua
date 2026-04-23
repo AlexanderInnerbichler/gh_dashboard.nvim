@@ -13,11 +13,14 @@ local COLORS = {
   "#b89472",  -- 6  feet / legs
   "#8a6438",  -- 7  deep shadow
   "#d8c08a",  -- 8  belly highlight
-  "#3a6b3a",  -- 9  grass dark (stem)
-  "#6aaa6a",  -- 10 grass light (tip)
+  "#1e3d1e",  -- 9  grass root / shadow
+  "#2d5a2d",  -- 10 grass lower stem
+  "#3a6b3a",  -- 11 grass mid stem
+  "#4a8a50",  -- 12 grass upper / blend
+  "#0a7a5c",  -- 13 grass body  (GhHeat2)
+  "#10c87e",  -- 14 grass tip   (GhHeat3)
 }
-local GD = 9
-local GL = 10
+local GRASS_COLORS = { 9, 10, 11, 12, 13, 14 }
 
 -- ── pixel art ──────────────────────────────────────────────────────────────
 -- 12 pixel rows × 14 cols per wing frame.
@@ -119,7 +122,10 @@ local function bot_pos(tr) return 2 * (7 - tr) end
 local function top_pos(tr) return 2 * (7 - tr) + 1 end
 
 local function grass_color(pixel_pos, gh)
-  return (pixel_pos == gh - 1) and GL or GD
+  if gh <= 1 then return GRASS_COLORS[1] end
+  local frac = pixel_pos / (gh - 1)
+  local idx  = math.floor(frac * (#GRASS_COLORS - 1) + 0.5) + 1
+  return GRASS_COLORS[math.max(1, math.min(#GRASS_COLORS, idx))]
 end
 
 -- ── highlight cache ────────────────────────────────────────────────────────
@@ -166,7 +172,7 @@ end
 
 -- ── strip builders ─────────────────────────────────────────────────────────
 
-local function build_body_vt(art, tr, dx, max_x, grass_h)
+local function build_body_vt(art, tr, dx, max_x, grass_h, fg_grass_h)
   local row_top = art[2 * tr - 1]
   local row_bot = art[2 * tr]
   local bp      = bot_pos(tr)
@@ -179,6 +185,12 @@ local function build_body_vt(art, tr, dx, max_x, grass_h)
       t = row_top[dc + 1] or 0
       b = row_bot[dc + 1] or 0
     end
+    -- foreground grass overrides duck pixels in tr=6 only
+    if tr == 6 and fg_grass_h then
+      local fg = fg_grass_h[sc] or 0
+      if fg >= tp + 1 then t = grass_color(tp, fg) end
+      if fg >= bp + 1 then b = grass_color(bp, fg) end
+    end
     local gh = (tr >= 4) and grass_h[sc] or 0
     local gt = (t == 0 and gh >= tp + 1) and grass_color(tp, gh) or 0
     local gb = (b == 0 and gh >= bp + 1) and grass_color(bp, gh) or 0
@@ -187,15 +199,17 @@ local function build_body_vt(art, tr, dx, max_x, grass_h)
   return vt
 end
 
-local function build_legs_vt(legs_row, dx, max_x, grass_h)
+local function build_legs_vt(legs_row, dx, max_x, grass_h, fg_grass_h)
   local vt = {}
   for sc = 0, max_x - 1 do
-    local dc = (sc - dx) % max_x
-    local t  = (dc < DUCK_COLS) and (legs_row[dc + 1] or 0) or 0
-    local gh = grass_h[sc]
-    local gt = (t == 0 and gh >= 2) and grass_color(1, gh) or 0
-    local gb = (gh >= 1) and grass_color(0, gh) or 0
-    table.insert(vt, cell(t, 0, gt, gb))
+    local dc  = (sc - dx) % max_x
+    local t   = (dc < DUCK_COLS) and (legs_row[dc + 1] or 0) or 0
+    local gh  = grass_h[sc]
+    local fg  = (fg_grass_h and fg_grass_h[sc]) or 0
+    local t_final  = (fg >= 2) and grass_color(1, fg) or t
+    local gt_final = (t_final == 0 and gh >= 2) and grass_color(1, gh) or 0
+    local gb_final = (fg >= 1) and grass_color(0, fg) or grass_color(0, gh)
+    table.insert(vt, cell(t_final, 0, gt_final, gb_final))
   end
   return vt
 end
@@ -213,6 +227,7 @@ local state = {
   wing_step              = 1,
   max_x                  = 40,
   grass_h                = {},
+  fg_grass_h             = {},
   grass_pat              = {},
   grass_from_contribs    = false,
   passes_done            = 0,
@@ -300,10 +315,11 @@ draw = function()
   local wing_frame = WING_SEQ[state.wing_step]
   local art        = get_art(wing_frame)
   local grass_h    = state.grass_h
+  local fg_h       = state.fg_grass_h
 
   -- Terminal rows 1-6: full duck body in the strip right of the heatmap.
   for tr = 1, 6 do
-    local vt = build_body_vt(art, tr, dx, mxw, grass_h)
+    local vt = build_body_vt(art, tr, dx, mxw, grass_h, fg_h)
     vim.api.nvim_buf_set_extmark(state.buf, duck_ns, state.base_line + tr, 0, {
       virt_text     = vt,
       virt_text_pos = "eol",
@@ -313,7 +329,7 @@ draw = function()
   -- Terminal row 7 (contributions line): legs + foreground grass.
   local line7 = state.base_line + 7
   if vim.api.nvim_buf_line_count(state.buf) > line7 then
-    local vt7 = build_legs_vt(LEGS[state.foot_frame], dx, mxw, grass_h)
+    local vt7 = build_legs_vt(LEGS[state.foot_frame], dx, mxw, grass_h, fg_h)
     vim.api.nvim_buf_set_extmark(state.buf, duck_ns, line7, 0, {
       virt_text     = vt7,
       virt_text_pos = "eol",
@@ -357,8 +373,11 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
     state.grass_pat           = pat
     state.grass_from_contribs = from_contribs
     state.grass_h             = {}
+    state.fg_grass_h          = {}
     for sc = 0, state.max_x - 1 do
       state.grass_h[sc] = pat[sc + 1]
+      local v = GRASS_PAT[(sc * 3) % GRASS_PAT_N + 1]
+      state.fg_grass_h[sc] = (v >= 3) and math.min(3, v - 2) or 0
     end
   end
 
