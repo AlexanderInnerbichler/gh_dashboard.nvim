@@ -329,14 +329,14 @@ function M.build(data, is_loading, is_stale, win_width, watched)
   render_profile(lines, hl_specs, data.profile, data.contributions and data.contributions.total,
     win_width, is_loading, is_stale)
   local login = data.profile and data.profile.login
-  heatmap.render_heatmap(lines, hl_specs, data.contributions, items, login)
+  local hm_left_pad = heatmap.render_heatmap(lines, hl_specs, data.contributions, items, login, win_width)
   render_prs(lines, hl_specs, items, data.prs, data.prs_err, win_width)
   render_issues(lines, hl_specs, items, data.issues, data.issues_err, win_width)
   render_repos(lines, hl_specs, items, data.repos, data.repos_err, watched)
   render_org_repos(lines, hl_specs, items, data.org_repos, data.org_repos_err, watched)
   render_watched_users(lines, hl_specs, items, data.watched_events, data.watched_events_err)
 
-  return lines, hl_specs, items
+  return lines, hl_specs, items, hm_left_pad or 0
 end
 
 return M

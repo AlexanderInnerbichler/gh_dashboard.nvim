@@ -190,26 +190,28 @@ end
 
 -- ── strip builders ─────────────────────────────────────────────────────────
 
-local function build_body_vt(art, tr, dx, max_x, grass_h, fg_grass_h)
-  local row_top = art[2 * tr - 1]
-  local row_bot = art[2 * tr]
+-- zone_start: first world column of this zone; zone_w: number of columns.
+-- art may be nil (grass-only draw); duck_x far off-world produces no duck pixels.
+local function build_body_vt(art, tr, duck_x, zone_start, zone_w, grass_h, fg_grass_h)
+  local row_top = art and art[2 * tr - 1] or {}
+  local row_bot = art and art[2 * tr] or {}
   local bp      = bot_pos(tr)
   local tp      = top_pos(tr)
   local vt      = {}
-  for sc = 0, max_x - 1 do
-    local dc = (sc - dx) % max_x
+  for sc = 0, zone_w - 1 do
+    local wc = sc + zone_start
+    local dc = wc - duck_x
     local t, b = 0, 0
-    if dc < DUCK_COLS then
+    if dc >= 0 and dc < DUCK_COLS then
       t = row_top[dc + 1] or 0
       b = row_bot[dc + 1] or 0
     end
-    -- foreground grass overrides duck pixels in tr=6 only
     if tr == 6 and fg_grass_h then
-      local fg = fg_grass_h[sc] or 0
+      local fg = fg_grass_h[wc] or 0
       if fg >= tp + 1 then t = fg_grass_color(tp, fg) end
       if fg >= bp + 1 then b = fg_grass_color(bp, fg) end
     end
-    local gh = (tr >= 4) and grass_h[sc] or 0
+    local gh = (tr >= 4) and (grass_h[wc] or 0) or 0
     local gt = (t == 0 and gh >= tp + 1) and grass_color(tp, gh) or 0
     local gb = (b == 0 and gh >= bp + 1) and grass_color(bp, gh) or 0
     table.insert(vt, cell(t, b, gt, gb))
@@ -217,13 +219,14 @@ local function build_body_vt(art, tr, dx, max_x, grass_h, fg_grass_h)
   return vt
 end
 
-local function build_legs_vt(legs_row, dx, max_x, grass_h, fg_grass_h)
+local function build_legs_vt(legs_row, duck_x, zone_start, zone_w, grass_h, fg_grass_h)
   local vt = {}
-  for sc = 0, max_x - 1 do
-    local dc  = (sc - dx) % max_x
-    local t   = (dc < DUCK_COLS) and (legs_row[dc + 1] or 0) or 0
-    local gh  = grass_h[sc]
-    local fg  = (fg_grass_h and fg_grass_h[sc]) or 0
+  for sc = 0, zone_w - 1 do
+    local wc = sc + zone_start
+    local dc = wc - duck_x
+    local t  = (legs_row and dc >= 0 and dc < DUCK_COLS) and (legs_row[dc + 1] or 0) or 0
+    local gh = grass_h[wc] or 0
+    local fg = (fg_grass_h and fg_grass_h[wc]) or 0
     local t_final  = (fg >= 2) and fg_grass_color(1, fg) or t
     local gt_final = (t_final == 0 and gh >= 2) and grass_color(1, gh) or 0
     local gb_final = (fg >= 1) and fg_grass_color(0, fg) or grass_color(0, gh)
@@ -244,6 +247,8 @@ local state = {
   foot_frame             = 1,
   wing_step              = 1,
   max_x                  = 40,
+  left_w                 = 0,
+  right_w                = 40,
   grass_h                = {},
   fg_grass_h             = {},
   grass_pat              = {},
@@ -258,41 +263,34 @@ local state = {
 
 local draw  -- forward declaration
 
+local function set_row(buf_line, vt_left, vt_right)
+  if #vt_left > 0 then
+    vim.api.nvim_buf_set_extmark(state.buf, duck_ns, buf_line, 0, {
+      virt_text = vt_left, virt_text_pos = "overlay",
+    })
+  end
+  vim.api.nvim_buf_set_extmark(state.buf, duck_ns, buf_line, 0, {
+    virt_text = vt_right, virt_text_pos = "eol",
+  })
+end
+
 local function draw_grass_only()
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
-  local mxw     = state.max_x
   local grass_h = state.grass_h
+  local fg_h    = state.fg_grass_h
+  local lw      = state.left_w
+  local rw      = state.right_w
+  local no_duck = -(DUCK_COLS + 1)
   for tr = 4, 6 do
-    local bp = bot_pos(tr)
-    local tp = top_pos(tr)
-    local vt = {}
-    for sc = 0, mxw - 1 do
-      local gh = grass_h[sc]
-      local fg = (tr == 6) and (state.fg_grass_h[sc] or 0) or 0
-      local t  = (fg >= tp + 1) and fg_grass_color(tp, fg) or 0
-      local b  = (fg >= bp + 1) and fg_grass_color(bp, fg) or 0
-      local gt = (t == 0 and gh >= tp + 1) and grass_color(tp, gh) or 0
-      local gb = (b == 0 and gh >= bp + 1) and grass_color(bp, gh) or 0
-      table.insert(vt, cell(t, b, gt, gb))
-    end
-    vim.api.nvim_buf_set_extmark(state.buf, duck_ns, state.base_line + tr, 0, {
-      virt_text = vt, virt_text_pos = "eol",
-    })
+    set_row(state.base_line + tr,
+      build_body_vt(nil, tr, no_duck, 0,  lw, grass_h, fg_h),
+      build_body_vt(nil, tr, no_duck, lw, rw, grass_h, fg_h))
   end
   local line7 = state.base_line + 7
   if vim.api.nvim_buf_line_count(state.buf) > line7 then
-    local vt = {}
-    for sc = 0, mxw - 1 do
-      local gh = grass_h[sc]
-      local fg = state.fg_grass_h[sc] or 0
-      local t_final  = (fg >= 2) and fg_grass_color(1, fg) or 0
-      local gt_final = (t_final == 0 and gh >= 2) and grass_color(1, gh) or 0
-      local gb_final = (fg >= 1) and fg_grass_color(0, fg) or grass_color(0, gh)
-      table.insert(vt, cell(t_final, 0, gt_final, gb_final))
-    end
-    vim.api.nvim_buf_set_extmark(state.buf, duck_ns, line7, 0, {
-      virt_text = vt, virt_text_pos = "eol",
-    })
+    set_row(line7,
+      build_legs_vt(nil, no_duck, 0,  lw, grass_h, fg_h),
+      build_legs_vt(nil, no_duck, lw, rw, grass_h, fg_h))
   end
 end
 
@@ -333,30 +331,25 @@ draw = function()
 
   vim.api.nvim_buf_clear_namespace(state.buf, duck_ns, 0, -1)
 
-  local dx         = state.x
-  local mxw        = state.max_x
-  local wing_frame = WING_SEQ[state.wing_step]
-  local art        = get_art(wing_frame)
-  local grass_h    = state.grass_h
-  local fg_h       = state.fg_grass_h
+  local dx      = state.x
+  local lw      = state.left_w
+  local rw      = state.right_w
+  local mxw     = state.max_x
+  local art     = get_art(WING_SEQ[state.wing_step])
+  local grass_h = state.grass_h
+  local fg_h    = state.fg_grass_h
 
-  -- Terminal rows 1-6: full duck body in the strip right of the heatmap.
   for tr = 1, 6 do
-    local vt = build_body_vt(art, tr, dx, mxw, grass_h, fg_h)
-    vim.api.nvim_buf_set_extmark(state.buf, duck_ns, state.base_line + tr, 0, {
-      virt_text     = vt,
-      virt_text_pos = "eol",
-    })
+    set_row(state.base_line + tr,
+      build_body_vt(art, tr, dx, 0,  lw, grass_h, fg_h),
+      build_body_vt(art, tr, dx, lw, rw, grass_h, fg_h))
   end
 
-  -- Terminal row 7 (contributions line): legs + foreground grass.
   local line7 = state.base_line + 7
   if vim.api.nvim_buf_line_count(state.buf) > line7 then
-    local vt7 = build_legs_vt(LEGS[state.foot_frame], dx, mxw, grass_h, fg_h)
-    vim.api.nvim_buf_set_extmark(state.buf, duck_ns, line7, 0, {
-      virt_text     = vt7,
-      virt_text_pos = "eol",
-    })
+    set_row(line7,
+      build_legs_vt(LEGS[state.foot_frame], dx, 0,  lw, grass_h, fg_h),
+      build_legs_vt(LEGS[state.foot_frame], dx, lw, rw, grass_h, fg_h))
   end
 
   -- Advance counters.
@@ -387,9 +380,11 @@ M.stop = function()
   end
 end
 
-M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contributions)
-  local hm_w      = hm_display_w or 58
-  local new_max_x = math.max(DUCK_COLS + 1, (win_width or 160) - hm_w - 2)
+M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contributions, left_w)
+  local hm_w     = hm_display_w or 58
+  local lw       = math.max(0, left_w or 0)
+  local rw       = math.max(DUCK_COLS + 1, (win_width or 160) - hm_w - 2)
+  local new_max_x = lw + rw
   local pat, from_contribs = build_grass_pattern(contributions, new_max_x)
 
   local function apply_grass()
@@ -406,6 +401,8 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
   if state.trigger_timer then
     state.buf       = buf
     state.base_line = base_line
+    state.left_w    = lw
+    state.right_w   = rw
     state.max_x     = new_max_x
     apply_grass()
     if not state.run_active then draw_grass_only() end
@@ -418,6 +415,8 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
 
   state.buf       = buf
   state.base_line = base_line
+  state.left_w    = lw
+  state.right_w   = rw
   state.max_x     = new_max_x
   apply_grass()
 
@@ -456,6 +455,8 @@ M.debug_info = function()
     passes_total         = state.passes_total,
     x                    = state.x,
     max_x                = state.max_x,
+    left_w               = state.left_w,
+    right_w              = state.right_w,
     tick                 = state.tick,
     secs_until_next      = secs_until,
     grass_from_contribs  = state.grass_from_contribs,

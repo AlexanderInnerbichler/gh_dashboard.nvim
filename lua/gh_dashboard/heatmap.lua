@@ -24,10 +24,10 @@ M.contribution_tier = function(count)
   return 2
 end
 
-M.render_heatmap = function(lines, hl_specs, contrib, items, username)
-  if not contrib then return end
+M.render_heatmap = function(lines, hl_specs, contrib, items, username, win_width)
+  if not contrib then return 0 end
   local weeks = contrib.weeks
-  if not weeks or #weeks == 0 then return end
+  if not weeks or #weeks == 0 then return 0 end
 
   local day_labels    = { "Su", "  ", "Tu", "  ", "Th", "  ", "Sa" }
   local heatmap_lines = {}
@@ -61,9 +61,13 @@ M.render_heatmap = function(lines, hl_specs, contrib, items, username)
     local dw = vim.api.nvim_strwidth(row)
     if dw > max_dw then max_dw = dw end
   end
+  -- Centre the heatmap horizontally; left_pad spaces become the left grass zone.
+  local hm_content_w = max_dw + 1
+  local left_pad     = math.max(0, math.floor(((win_width or 120) - hm_content_w) / 2))
+  local pad_str      = string.rep(" ", left_pad)
   for i, row in ipairs(heatmap_lines) do
     local dw = vim.api.nvim_strwidth(row)
-    heatmap_lines[i] = row .. string.rep(" ", max_dw - dw + 1)
+    heatmap_lines[i] = pad_str .. row .. string.rep(" ", max_dw - dw + 1)
   end
 
   local base_line = #lines
@@ -73,8 +77,8 @@ M.render_heatmap = function(lines, hl_specs, contrib, items, username)
       table.insert(hl_specs, {
         hl    = M.HEAT_HLS[cell.tier],
         line  = base_line + i - 1,
-        col_s = cell.col,
-        col_e = cell.col + 2,
+        col_s = cell.col + left_pad,
+        col_e = cell.col + left_pad + 2,
       })
     end
     if items and username and day_last_dates[i] then
@@ -89,11 +93,12 @@ M.render_heatmap = function(lines, hl_specs, contrib, items, username)
 
   local total_line = string.format("     %d contributions this year", contrib.total or 0)
   local total_dw   = vim.api.nvim_strwidth(total_line)
-  local total_padded = total_line .. string.rep(" ", math.max(0, max_dw + 1 - total_dw))
+  local total_padded = pad_str .. total_line .. string.rep(" ", math.max(0, max_dw + 1 - total_dw))
   table.insert(lines, total_padded)
-  table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 0, col_e = #total_line })
-  table.insert(lines, separator())
+  table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = left_pad, col_e = left_pad + #total_line })
+  table.insert(lines, separator(win_width))
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
+  return left_pad
 end
 
 return M

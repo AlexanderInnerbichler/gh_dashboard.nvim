@@ -77,7 +77,7 @@ local function apply_render()
   for _, entry in ipairs(require("gh_dashboard.watchlist").get_repos() or {}) do
     watched[entry.owner .. "/" .. entry.repo] = true
   end
-  local lines, hl_specs, items = render.build(data, state.is_loading, state.is_stale, win_width, watched)
+  local lines, hl_specs, items, hm_left_pad = render.build(data, state.is_loading, state.is_stale, win_width, watched)
   state.items = items
 
   vim.bo[state.buf].modifiable = true
@@ -102,7 +102,7 @@ local function apply_render()
     local hm_line     = lines[heatmap_base + 1] or ""
     local hm_display_w = vim.api.nvim_strwidth(hm_line)
     duck.start(state.buf, heatmap_base, interval_ms, win_width, hm_display_w,
-               state.data and state.data.contributions)
+               state.data and state.data.contributions, hm_left_pad)
   end
 end
 
@@ -367,6 +367,7 @@ M.debug = function()
     "  run active      : " .. yesno(d.run_active),
     "  passes          : " .. d.passes_done .. " / " .. d.passes_total,
     "  x position      : " .. d.x .. " / " .. d.max_x,
+    "  zones           : left=" .. d.left_w .. "  right=" .. d.right_w,
     "  tick            : " .. d.tick,
     "  next trigger    : " .. next_trig,
     "Grass:",
