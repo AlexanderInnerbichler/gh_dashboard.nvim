@@ -354,6 +354,12 @@ M.debug = function()
   local next_trig = d.run_active and ("running (" .. d.passes_done .. "/" .. d.passes_total .. " passes)")
     or fmt_secs(d.secs_until_next)
 
+  local grass_src = d.grass_from_contribs and "contributions" or "fallback (no data)"
+  local grass_pat_str = ""
+  if d.grass_pat and #d.grass_pat > 0 then
+    grass_pat_str = table.concat(d.grass_pat, " ")
+  end
+
   local lines = {
     "── GhDashboard Debug ──────────────────",
     "Duck:",
@@ -363,6 +369,9 @@ M.debug = function()
     "  x position      : " .. d.x .. " / " .. d.max_x,
     "  tick            : " .. d.tick,
     "  next trigger    : " .. next_trig,
+    "Grass:",
+    "  source          : " .. grass_src,
+    "  pattern (20)    : " .. grass_pat_str,
     "Cache:",
     "  age             : " .. fmt_secs(age),
     "  ttl             : " .. fmt_secs(ttl),

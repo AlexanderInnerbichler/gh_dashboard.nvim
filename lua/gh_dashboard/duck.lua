@@ -82,7 +82,9 @@ local GRASS_PAT_N = #GRASS_PAT
 local TIER_TO_HEIGHT = { 1, 2, 3, 4, 5, 6 }  -- contribution tier 1-6 → grass height 1-6
 
 local function build_grass_pattern(contributions)
-  if not contributions or not contributions.weeks then return GRASS_PAT end
+  if not contributions or not contributions.weeks then
+    return GRASS_PAT, false
+  end
   local days = {}
   for i = #contributions.weeks, 1, -1 do
     local week = contributions.weeks[i]
@@ -100,7 +102,7 @@ local function build_grass_pattern(contributions)
     local jitter = GRASS_PAT[i] % 3 - 1
     pat[i] = math.max(1, math.min(6, base + jitter))
   end
-  return pat
+  return pat, true
 end
 
 local function bot_pos(tr) return 2 * (7 - tr) end
@@ -190,20 +192,22 @@ end
 -- ── module state ───────────────────────────────────────────────────────────
 
 local state = {
-  buf              = nil,
-  base_line        = nil,
-  timer            = nil,
-  trigger_timer    = nil,
-  x                = 0,
-  tick             = 0,
-  foot_frame       = 1,
-  wing_step        = 1,
-  max_x            = 40,
-  grass_h          = {},
-  passes_done      = 0,
-  passes_total     = 2,
-  run_active       = false,
-  next_trigger_at  = nil,  -- vim.uv.now() ms value
+  buf                    = nil,
+  base_line              = nil,
+  timer                  = nil,
+  trigger_timer          = nil,
+  x                      = 0,
+  tick                   = 0,
+  foot_frame             = 1,
+  wing_step              = 1,
+  max_x                  = 40,
+  grass_h                = {},
+  grass_pat              = {},
+  grass_from_contribs    = false,
+  passes_done            = 0,
+  passes_total           = 2,
+  run_active             = false,
+  next_trigger_at        = nil,
 }
 
 -- ── run helpers ────────────────────────────────────────────────────────────
@@ -335,16 +339,22 @@ end
 M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contributions)
   local hm_w      = hm_display_w or 58
   local new_max_x = math.max(DUCK_COLS + 1, (win_width or 160) - hm_w - 2)
-  local pat       = build_grass_pattern(contributions)
+  local pat, from_contribs = build_grass_pattern(contributions)
+
+  local function apply_grass()
+    state.grass_pat           = pat
+    state.grass_from_contribs = from_contribs
+    state.grass_h             = {}
+    for sc = 0, state.max_x - 1 do
+      state.grass_h[sc] = pat[sc % #pat + 1]
+    end
+  end
 
   if state.trigger_timer then
     state.buf       = buf
     state.base_line = base_line
     state.max_x     = new_max_x
-    state.grass_h   = {}
-    for sc = 0, state.max_x - 1 do
-      state.grass_h[sc] = pat[sc % #pat + 1]
-    end
+    apply_grass()
     if not state.run_active then draw_grass_only() end
     return
   end
@@ -356,11 +366,7 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
   state.buf       = buf
   state.base_line = base_line
   state.max_x     = new_max_x
-
-  state.grass_h = {}
-  for sc = 0, state.max_x - 1 do
-    state.grass_h[sc] = pat[sc % #pat + 1]
-  end
+  apply_grass()
 
   local ms = interval_ms or 400
   draw_grass_only()
@@ -391,14 +397,16 @@ M.debug_info = function()
     secs_until = math.max(0, math.floor((state.next_trigger_at - vim.uv.now()) / 1000))
   end
   return {
-    session_active  = state.trigger_timer ~= nil,
-    run_active      = state.run_active,
-    passes_done     = state.passes_done,
-    passes_total    = state.passes_total,
-    x               = state.x,
-    max_x           = state.max_x,
-    tick            = state.tick,
-    secs_until_next = secs_until,
+    session_active       = state.trigger_timer ~= nil,
+    run_active           = state.run_active,
+    passes_done          = state.passes_done,
+    passes_total         = state.passes_total,
+    x                    = state.x,
+    max_x                = state.max_x,
+    tick                 = state.tick,
+    secs_until_next      = secs_until,
+    grass_from_contribs  = state.grass_from_contribs,
+    grass_pat            = state.grass_pat,
   }
 end
 
