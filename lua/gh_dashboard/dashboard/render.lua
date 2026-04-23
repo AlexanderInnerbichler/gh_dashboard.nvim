@@ -155,7 +155,7 @@ local function render_issues(lines, hl_specs, items, issues, err, win_width)
   else
     -- layout: "   <repo(15)>  #<num(4)>  <title>  <age>"
     -- overhead: 3 + 15 + 2 + 1 + 4 + 2 + 2 = 29; ~10 for age
-    local repo_w  = 15
+    local repo_w  = 20
     local title_w = math.min(60, math.max(30, (win_width or 120) - 29 - 12))
     local age_col = 3 + repo_w + 2 + 1 + 4 + 2 + title_w + 2
     local repo_colors = {}
