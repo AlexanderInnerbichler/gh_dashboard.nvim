@@ -79,7 +79,7 @@ local DUCK_COLS = 14
 local GRASS_PAT   = { 2,4,1,3,2,1,4,3,1,2,3,4,1,2,5,3,1,4,2,3 }
 local GRASS_PAT_N = #GRASS_PAT
 
-local TIER_TO_HEIGHT = { 1, 2, 4, 5, 7, 8 }  -- contribution tier 1-6 → grass height 1-8
+local TIER_TO_HEIGHT = { 3, 4, 5, 6, 7, 8 }  -- contribution tier 1-6 → grass height 3-8
 
 local function build_grass_pattern(contributions, max_x)
   if not contributions or not contributions.weeks then
@@ -110,7 +110,7 @@ local function build_grass_pattern(contributions, max_x)
     local tier   = (day and day.tier) or 1
     local base   = TIER_TO_HEIGHT[tier] or 1
     local jitter = GRASS_PAT[sc % GRASS_PAT_N + 1] % 3 - 1
-    pat[sc + 1] = math.max(1, math.min(8, base + jitter))
+    pat[sc + 1] = math.max(3, math.min(8, base + jitter))
   end
   return pat, true
 end
