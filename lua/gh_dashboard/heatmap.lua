@@ -55,6 +55,17 @@ M.render_heatmap = function(lines, hl_specs, contrib, items, username)
     day_last_dates[day_idx] = last_date
   end
 
+  -- Pad all rows to the same display width + 1 so virt_text EOL anchors are consistent.
+  local max_dw = 0
+  for _, row in ipairs(heatmap_lines) do
+    local dw = vim.api.nvim_strwidth(row)
+    if dw > max_dw then max_dw = dw end
+  end
+  for i, row in ipairs(heatmap_lines) do
+    local dw = vim.api.nvim_strwidth(row)
+    heatmap_lines[i] = row .. string.rep(" ", max_dw - dw + 1)
+  end
+
   local base_line = #lines
   for i, row in ipairs(heatmap_lines) do
     table.insert(lines, row)
@@ -77,7 +88,9 @@ M.render_heatmap = function(lines, hl_specs, contrib, items, username)
   end
 
   local total_line = string.format("     %d contributions this year", contrib.total or 0)
-  table.insert(lines, total_line)
+  local total_dw   = vim.api.nvim_strwidth(total_line)
+  local total_padded = total_line .. string.rep(" ", math.max(0, max_dw + 1 - total_dw))
+  table.insert(lines, total_padded)
   table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 0, col_e = #total_line })
   table.insert(lines, separator())
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })

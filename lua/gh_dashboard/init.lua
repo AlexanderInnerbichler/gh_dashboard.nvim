@@ -4,6 +4,7 @@ local heatmap    = require("gh_dashboard.heatmap")
 local highlights = require("gh_dashboard.highlights")
 local fetch      = require("gh_dashboard.dashboard.fetch")
 local render     = require("gh_dashboard.dashboard.render")
+local duck       = require("gh_dashboard.duck")
 
 -- ── state ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,25 @@ local function cache_age_seconds()
   return os.time() - stat.mtime.sec
 end
 
+-- ── helpers ────────────────────────────────────────────────────────────────
+
+local function today_contrib_tier(data)
+  if not data or not data.contributions then return 1 end
+  local weeks = data.contributions.weeks
+  if not weeks then return 1 end
+  local today = os.date("%Y-%m-%d")
+  for i = #weeks, math.max(1, #weeks - 2), -1 do
+    local week = weeks[i]
+    if week then
+      for j = 1, 7 do
+        local day = week[j]
+        if day and day.date == today then return day.tier or 1 end
+      end
+    end
+  end
+  return 1
+end
+
 -- ── render ─────────────────────────────────────────────────────────────────
 
 local function apply_render()
@@ -67,6 +87,21 @@ local function apply_render()
   for _, spec in ipairs(hl_specs) do
     local col_e = spec.col_e == -1 and -1 or spec.col_e
     vim.api.nvim_buf_add_highlight(state.buf, ns, spec.hl, spec.line, spec.col_s, col_e)
+  end
+
+  -- start duck animation in the empty space right of the heatmap
+  local heatmap_base = nil
+  for _, item in ipairs(items) do
+    if item.kind == "day" then heatmap_base = item.line; break end
+  end
+  if heatmap_base and state.win and vim.api.nvim_win_is_valid(state.win) then
+    local tier        = today_contrib_tier(state.data)
+    local interval_ms = math.max(60, 400 - (tier - 1) * 68)
+    -- lines is 1-indexed; heatmap_base is the 0-indexed buffer line of the
+    -- first heatmap row, which is lines[heatmap_base + 1] in the Lua table.
+    local hm_line     = lines[heatmap_base + 1] or ""
+    local hm_display_w = vim.api.nvim_strwidth(hm_line)
+    duck.start(state.buf, heatmap_base, interval_ms, win_width, hm_display_w)
   end
 end
 
@@ -172,6 +207,7 @@ local function open_url_at_cursor()
 end
 
 local function close_win()
+  duck.stop()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, false)
     state.win = nil

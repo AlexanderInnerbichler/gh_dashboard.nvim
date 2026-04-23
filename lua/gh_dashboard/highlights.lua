@@ -73,6 +73,9 @@ local function apply()
   vim.api.nvim_set_hl(0, "GhDiffAdd",           { fg = "#98c379"               })
   vim.api.nvim_set_hl(0, "GhDiffDel",           { fg = "#e06c75"               })
   vim.api.nvim_set_hl(0, "GhDiffHunk",          { fg = "#61afef"               })
+  -- duck animation water
+  vim.api.nvim_set_hl(0, "GhDuckWater",     { fg = "#61afef" })
+  vim.api.nvim_set_hl(0, "GhDuckWaterDark", { fg = "#4078a0" })
 end
 
 function M.setup()
