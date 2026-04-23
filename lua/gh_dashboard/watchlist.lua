@@ -119,14 +119,15 @@ local DEFAULT_EVENT_ICON = "󰋙 "
 
 local function time_ago(iso)
   if not iso then return "" end
-  local y, mo, d, h, mi, s = iso:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z")
+  local y, mo, d, h, mi, s = iso:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
   if not y then return "" end
   local t    = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
-                          hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
-  local diff = os.time() - t
-  if diff < 3600   then return math.floor(diff / 60)    .. "m ago"
-  elseif diff < 86400 then return math.floor(diff / 3600)  .. "h ago"
-  else                  return math.floor(diff / 86400)  .. "d ago" end
+                         hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
+  local tz   = os.difftime(t, os.time(os.date("!*t", t)))
+  local diff = os.time() - (t + tz)
+  if diff < 3600   then return math.floor(diff / 60)   .. "m ago"
+  elseif diff < 86400 then return math.floor(diff / 3600) .. "h ago"
+  else                  return math.floor(diff / 86400) .. "d ago" end
 end
 
 local function event_detail(ev)
@@ -248,6 +249,20 @@ local function mark_seen(entry, ev_id)
   entry.seen_ids = entry.seen_ids or {}
   table.insert(entry.seen_ids, 1, ev_id)
   if #entry.seen_ids > 50 then table.remove(entry.seen_ids) end
+end
+
+local function seed_seen(entry)
+  gh.run(
+    { "gh", "api", "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
+      "--jq", "[.[] | {id}] | .[0:10]" },
+    function(err, events)
+      if err or type(events) ~= "table" then return end
+      for _, ev in ipairs(events) do
+        mark_seen(entry, tostring(ev.id))
+      end
+      save_watchlist()
+    end
+  )
 end
 
 local function poll_repo(entry)
@@ -538,11 +553,26 @@ local function open_history_popup()
   local lines, hl_specs = {}, {}
   table.insert(lines, "")
   for _, entry in ipairs(state.history) do
+    local icon  = EVENT_ICONS[entry._ev.type] or DEFAULT_EVENT_ICON
     local label = event_label(entry._ev)
-    local line  = "   " .. entry._repo .. "  ·  " .. label
+    local repo  = entry._repo
+    local age   = time_ago(entry._ev.created_at)
+    local age_part = age ~= "" and ("  ·  " .. age) or ""
+    local line  = "   " .. icon .. label .. "  ·  " .. repo .. age_part
+    local ln         = #lines
+    local icon_s     = 3
+    local icon_e     = icon_s + #icon
+    local label_e    = icon_e + #label
+    local repo_s     = label_e + 5  -- "  ·  "
+    local repo_e     = repo_s + #repo
+    local age_s      = repo_e + 5
     table.insert(lines, line)
-    table.insert(hl_specs, { hl = "GhWatchRepo",  line = #lines - 1, col_s = 3, col_e = 3 + #entry._repo })
-    table.insert(hl_specs, { hl = "GhWatchMeta",  line = #lines - 1, col_s = 3 + #entry._repo, col_e = -1 })
+    table.insert(hl_specs, { hl = "GhWatchNotif", line = ln, col_s = icon_s, col_e = icon_e })
+    table.insert(hl_specs, { hl = "GhWatchTitle", line = ln, col_s = icon_e, col_e = label_e })
+    table.insert(hl_specs, { hl = "GhWatchRepo",  line = ln, col_s = repo_s, col_e = repo_e })
+    if age ~= "" then
+      table.insert(hl_specs, { hl = "GhWatchMeta", line = ln, col_s = age_s, col_e = -1 })
+    end
   end
   table.insert(lines, "")
   write_buf(buf, lines, hl_specs)
@@ -566,6 +596,8 @@ local function open_history_popup()
     footer     = " <CR> open  ·  q close ",
     footer_pos = "center",
   })
+  vim.api.nvim_set_option_value("winhl",
+    "FloatTitle:GhWatchTitle,FloatBorder:GhWatchSep", { win = win })
   vim.wo[win].cursorline     = true
   vim.wo[win].number         = false
   vim.wo[win].relativenumber = false
@@ -628,8 +660,10 @@ M.toggle_repo = function(full_name)
       return
     end
   end
-  table.insert(state.repos, { owner = owner, repo = repo, last_seen_id = "" })
+  local entry = { owner = owner, repo = repo, seen_ids = {} }
+  table.insert(state.repos, entry)
   save_watchlist()
+  seed_seen(entry)
   vim.notify("Added " .. full_name .. " to watchlist", vim.log.levels.INFO)
 end
 

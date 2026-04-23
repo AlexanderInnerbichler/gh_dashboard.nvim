@@ -14,9 +14,10 @@ local function age_string(iso8601)
   if not iso8601 or iso8601 == vim.NIL then return "" end
   local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
   if not y then return "" end
-  local t = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
-                      hour = tonumber(h), min = tonumber(mi), sec = tonumber(s), isdst = false })
-  local diff = os.time(os.date("!*t")) - t
+  local t    = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
+                         hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
+  local tz   = os.difftime(t, os.time(os.date("!*t", t)))
+  local diff = os.time() - (t + tz)
   if diff < 3600 then
     return math.floor(diff / 60) .. "m ago"
   elseif diff < 86400 then
