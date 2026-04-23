@@ -79,12 +79,17 @@ local DUCK_COLS = 14
 local GRASS_PAT   = { 2,4,1,3,2,1,4,3,1,2,3,4,1,2,5,3,1,4,2,3 }
 local GRASS_PAT_N = #GRASS_PAT
 
-local TIER_TO_HEIGHT = { 1, 2, 3, 4, 5, 6 }  -- contribution tier 1-6 → grass height 1-6
+local TIER_TO_HEIGHT = { 1, 2, 4, 5, 7, 8 }  -- contribution tier 1-6 → grass height 1-8
 
-local function build_grass_pattern(contributions)
+local function build_grass_pattern(contributions, max_x)
   if not contributions or not contributions.weeks then
-    return GRASS_PAT, false
+    local pat = {}
+    for sc = 0, max_x - 1 do
+      pat[sc + 1] = GRASS_PAT[sc % GRASS_PAT_N + 1]
+    end
+    return pat, false
   end
+  -- Flatten all days newest-first, then reverse so oldest = column 0
   local days = {}
   for i = #contributions.weeks, 1, -1 do
     local week = contributions.weeks[i]
@@ -94,13 +99,18 @@ local function build_grass_pattern(contributions)
       end
     end
   end
+  -- Reverse: oldest day first so the rightmost column is today
+  local n = #days
+  for i = 1, math.floor(n / 2) do
+    days[i], days[n - i + 1] = days[n - i + 1], days[i]
+  end
   local pat = {}
-  for i = 1, GRASS_PAT_N do
-    local day    = days[i]
+  for sc = 0, max_x - 1 do
+    local day    = days[n - max_x + sc + 1]  -- last max_x days, oldest at sc=0
     local tier   = (day and day.tier) or 1
     local base   = TIER_TO_HEIGHT[tier] or 1
-    local jitter = GRASS_PAT[i] % 3 - 1
-    pat[i] = math.max(1, math.min(6, base + jitter))
+    local jitter = GRASS_PAT[sc % GRASS_PAT_N + 1] % 3 - 1
+    pat[sc + 1] = math.max(1, math.min(8, base + jitter))
   end
   return pat, true
 end
@@ -169,7 +179,7 @@ local function build_body_vt(art, tr, dx, max_x, grass_h)
       t = row_top[dc + 1] or 0
       b = row_bot[dc + 1] or 0
     end
-    local gh = (tr >= 5) and grass_h[sc] or 0
+    local gh = (tr >= 4) and grass_h[sc] or 0
     local gt = (t == 0 and gh >= tp + 1) and grass_color(tp, gh) or 0
     local gb = (b == 0 and gh >= bp + 1) and grass_color(bp, gh) or 0
     table.insert(vt, cell(t, b, gt, gb))
@@ -218,7 +228,7 @@ local function draw_grass_only()
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
   local mxw     = state.max_x
   local grass_h = state.grass_h
-  for tr = 5, 6 do
+  for tr = 4, 6 do
     local bp = bot_pos(tr)
     local tp = top_pos(tr)
     local vt = {}
@@ -339,14 +349,14 @@ end
 M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contributions)
   local hm_w      = hm_display_w or 58
   local new_max_x = math.max(DUCK_COLS + 1, (win_width or 160) - hm_w - 2)
-  local pat, from_contribs = build_grass_pattern(contributions)
+  local pat, from_contribs = build_grass_pattern(contributions, new_max_x)
 
   local function apply_grass()
     state.grass_pat           = pat
     state.grass_from_contribs = from_contribs
     state.grass_h             = {}
     for sc = 0, state.max_x - 1 do
-      state.grass_h[sc] = pat[sc % #pat + 1]
+      state.grass_h[sc] = pat[sc + 1]
     end
   end
 
