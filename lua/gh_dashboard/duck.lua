@@ -193,8 +193,9 @@ local function build_legs_vt(legs_row, dx, max_x, grass_h)
     local dc = (sc - dx) % max_x
     local t  = (dc < DUCK_COLS) and (legs_row[dc + 1] or 0) or 0
     local gh = grass_h[sc]
+    local gt = (t == 0 and gh >= 2) and grass_color(1, gh) or 0
     local gb = (gh >= 1) and grass_color(0, gh) or 0
-    table.insert(vt, cell(t, 0, 0, gb))
+    table.insert(vt, cell(t, 0, gt, gb))
   end
   return vt
 end
@@ -247,8 +248,9 @@ local function draw_grass_only()
     local vt = {}
     for sc = 0, mxw - 1 do
       local gh = grass_h[sc]
+      local gt = (gh >= 2) and grass_color(1, gh) or 0
       local gb = (gh >= 1) and grass_color(0, gh) or 0
-      table.insert(vt, cell(0, 0, 0, gb))
+      table.insert(vt, cell(0, 0, gt, gb))
     end
     vim.api.nvim_buf_set_extmark(state.buf, duck_ns, line7, 0, {
       virt_text = vt, virt_text_pos = "eol",
