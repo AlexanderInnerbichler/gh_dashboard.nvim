@@ -126,11 +126,7 @@ local function fetch_and_render()
       done(err ~= nil)
     end)
     if login then
-      pending = pending + 2
-      fetch.activity(login, function(err, activity)
-        if err then state.data.activity_err = err else state.data.activity = activity end
-        done(err ~= nil)
-      end)
+      pending = pending + 1
       fetch.contributions(function(err, contrib)
         if err then state.data.contrib_err = err else state.data.contributions = contrib end
         done(err ~= nil)
@@ -158,8 +154,10 @@ local function open_url_at_cursor()
   local cur_line = vim.api.nvim_win_get_cursor(state.win)[1] - 1
   for _, item in ipairs(state.items) do
     if item.line == cur_line then
-      if item.kind == "issue" or item.kind == "pr" or item.kind == "repo" then
+      if item.kind == "issue" or item.kind == "pr" then
         require("gh_dashboard.reader").open(item)
+      elseif item.kind == "repo" then
+        require("gh_dashboard.repo_view").open(item)
       elseif item.kind == "user" then
         require("gh_dashboard.user_profile").open(item.username)
       elseif item.kind == "day" then

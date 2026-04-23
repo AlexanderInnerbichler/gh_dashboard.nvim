@@ -171,40 +171,6 @@ local function render_issues(lines, hl_specs, items, issues, err, win_width)
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
 end
 
-local function render_activity(lines, hl_specs, activity, err)
-  local header = "  Recent Activity"
-  table.insert(lines, header)
-  table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
-
-  if err then
-    local msg = "  ✗ " .. sl(err)
-    table.insert(lines, msg)
-    table.insert(hl_specs, { hl = "GhError", line = #lines - 1, col_s = 0, col_e = #msg })
-  elseif not activity or #activity == 0 then
-    local msg = "   No recent activity"
-    table.insert(lines, msg)
-    table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
-  else
-    for i, ev in ipairs(activity) do
-      if i > 10 then break end
-      local icon = EVENT_ICONS[ev.type] or "·"
-      local age  = age_string(ev.created_at)
-      local line = string.format("   %s  %-30s  %-35s  %s",
-        icon, trunc(ev.summary or "", 30), trunc(ev.repo or "", 35), age)
-      table.insert(lines, line)
-      local icon_hl = "GhStats"
-      if ev.type == "PushEvent"        then icon_hl = "GhPush"
-      elseif ev.type == "PullRequestEvent" then icon_hl = "GhPR"
-      elseif ev.type == "IssuesEvent" or ev.type == "IssueCommentEvent" then icon_hl = "GhIssue"
-      end
-      table.insert(hl_specs, { hl = icon_hl, line = #lines - 1, col_s = 3, col_e = 3 + #icon })
-      table.insert(hl_specs, { hl = "GhMeta", line = #lines - 1, col_s = 38, col_e = -1 })
-    end
-  end
-  table.insert(lines, separator())
-  table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
-end
-
 local function render_repos(lines, hl_specs, items, repos, err, watched)
   local count  = (not err and repos) and #repos or nil
   local header = count ~= nil and ("  Repositories (" .. count .. ")") or "  Repositories"
@@ -352,7 +318,6 @@ function M.build(data, is_loading, is_stale, win_width, watched)
   heatmap.render_heatmap(lines, hl_specs, data.contributions, items, login)
   render_prs(lines, hl_specs, items, data.prs, data.prs_err, win_width)
   render_issues(lines, hl_specs, items, data.issues, data.issues_err, win_width)
-  render_activity(lines, hl_specs, data.activity, data.activity_err)
   render_repos(lines, hl_specs, items, data.repos, data.repos_err, watched)
   render_org_repos(lines, hl_specs, items, data.org_repos, data.org_repos_err, watched)
   render_watched_users(lines, hl_specs, items, data.watched_events, data.watched_events_err)

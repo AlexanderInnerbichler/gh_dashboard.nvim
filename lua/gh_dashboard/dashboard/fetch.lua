@@ -9,35 +9,6 @@ local function repo_from_url(url)
   return url:match("github%.com/([^/]+/[^/]+)") or "?"
 end
 
-local function event_summary(ev)
-  local t      = ev.type   or "Event"
-  local action = ev.action
-  if t == "PushEvent" then
-    return "pushed commits"
-  elseif t == "PullRequestEvent" then
-    if     action == "opened"      then return "opened PR"
-    elseif action == "closed"      then return (ev.merged == true) and "merged PR" or "closed PR"
-    elseif action == "reopened"    then return "reopened PR"
-    elseif action == "synchronize" then return "pushed to PR"
-    else                                return "PR activity" end
-  elseif t == "IssuesEvent" then
-    if     action == "opened"   then return "opened issue"
-    elseif action == "closed"   then return "closed issue"
-    elseif action == "reopened" then return "reopened issue"
-    else                             return "issue activity" end
-  elseif t == "IssueCommentEvent" then
-    return "commented on issue"
-  elseif t == "CreateEvent" then
-    return "created branch/tag"
-  elseif t == "ForkEvent" then
-    return "forked repo"
-  elseif t == "WatchEvent" then
-    return "starred repo"
-  else
-    return t:gsub("Event$", ""):lower()
-  end
-end
-
 -- ── fetch functions ────────────────────────────────────────────────────────
 
 function M.profile(callback)
@@ -121,30 +92,6 @@ function M.issues(callback)
         })
       end
       callback(nil, issues)
-    end
-  )
-end
-
-function M.activity(login, callback)
-  gh.run_with_retry(
-    { "gh", "api", "/users/" .. login .. "/events",
-      "--jq", "[.[] | {type, repo:.repo.name, created_at, action:.payload.action, merged:.payload.pull_request.merged, pr_number:.payload.pull_request.number, issue_number:.payload.issue.number}] | .[0:20]" },
-    function(err, data)
-      if err then callback(err, nil) return end
-      local events = {}
-      for _, ev in ipairs(data or {}) do
-        table.insert(events, {
-          type         = ev.type,
-          repo         = ev.repo,
-          created_at   = ev.created_at,
-          action       = ev.action,
-          merged       = ev.merged,
-          pr_number    = ev.pr_number,
-          issue_number = ev.issue_number,
-          summary      = event_summary(ev),
-        })
-      end
-      callback(nil, events)
     end
   )
 end

@@ -429,6 +429,19 @@ local function remove_at_cursor()
   vim.notify("Removed " .. removed.owner .. "/" .. removed.repo, vim.log.levels.INFO)
 end
 
+local function open_repo_at_cursor()
+  if not state.manager_win or not vim.api.nvim_win_is_valid(state.manager_win) then return end
+  if #state.repos == 0 then return end
+  local cur = vim.api.nvim_win_get_cursor(state.manager_win)[1]
+  local idx = cur - 1
+  if idx < 1 or idx > #state.repos then return end
+  local entry = state.repos[idx]
+  require("gh_dashboard.repo_view").open({
+    kind      = "repo",
+    full_name = entry.owner .. "/" .. entry.repo,
+  })
+end
+
 local function open_manager()
   if state.manager_win and vim.api.nvim_win_is_valid(state.manager_win) then
     vim.api.nvim_set_current_win(state.manager_win)
@@ -459,7 +472,7 @@ local function open_manager()
     border     = "rounded",
     title      = " Watched Repos ",
     title_pos  = "center",
-    footer     = " a add  ·  d remove  ·  q close ",
+    footer     = " <CR> view  ·  a add  ·  d remove  ·  q close ",
     footer_pos = "center",
   })
   vim.wo[state.manager_win].number         = false
@@ -473,6 +486,7 @@ local function open_manager()
   local function bmap(lhs, fn)
     vim.keymap.set("n", lhs, fn, { buffer = state.manager_buf, nowait = true, silent = true })
   end
+  bmap("<CR>",  open_repo_at_cursor)
   bmap("a",     open_add_input)
   bmap("d",     remove_at_cursor)
   bmap("x",     remove_at_cursor)

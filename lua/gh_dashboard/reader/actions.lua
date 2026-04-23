@@ -57,4 +57,17 @@ function M.close_issue(item, callback)
   )
 end
 
+function M.create_issue(repo, title, body, callback)
+  vim.system(
+    { "gh", "issue", "create", "-R", repo, "--title", title, "--body", body },
+    { text = true },
+    function(result)
+      vim.schedule(function()
+        if result.code ~= 0 then callback(result.stderr or "gh error")
+        else callback(nil) end
+      end)
+    end
+  )
+end
+
 return M
