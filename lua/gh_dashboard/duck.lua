@@ -19,8 +19,13 @@ local COLORS = {
   "#4a8a50",  -- 12 grass upper / blend
   "#0a7a5c",  -- 13 grass body  (GhHeat2)
   "#10c87e",  -- 14 grass tip   (GhHeat3)
+  "#0d1f0d",  -- 15 fg root  (near-black green)
+  "#142b14",  -- 16 fg stem  (dark forest shadow)
+  "#1a3f1a",  -- 17 fg mid   (still dark)
+  "#0a4a2a",  -- 18 fg tip   (dark teal)
 }
-local GRASS_COLORS = { 9, 10, 11, 12, 13, 14 }
+local GRASS_COLORS    = { 9, 10, 11, 12, 13, 14 }
+local FG_GRASS_COLORS = { 15, 16, 17, 18 }
 
 -- ── pixel art ──────────────────────────────────────────────────────────────
 -- 12 pixel rows × 14 cols per wing frame.
@@ -79,8 +84,10 @@ local DUCK_COLS = 14
 
 -- ── grass pattern ──────────────────────────────────────────────────────────
 
-local GRASS_PAT   = { 2,4,1,3,2,1,4,3,1,2,3,4,1,2,5,3,1,4,2,3 }
-local GRASS_PAT_N = #GRASS_PAT
+local GRASS_PAT      = { 2,4,1,3,2,1,4,3,1,2,3,4,1,2,5,3,1,4,2,3 }
+local GRASS_PAT_N    = #GRASS_PAT
+local FG_BLADE_PAT   = { 0,0,4,0,0,0,3,0,0,4,0,0,3,0,0,0,4,0,3 }  -- 19 elems (prime vs 20)
+local FG_BLADE_PAT_N = #FG_BLADE_PAT
 
 local TIER_TO_HEIGHT = { 3, 4, 5, 6, 7, 8 }  -- contribution tier 1-6 → grass height 3-8
 
@@ -120,6 +127,14 @@ end
 
 local function bot_pos(tr) return 2 * (7 - tr) end
 local function top_pos(tr) return 2 * (7 - tr) + 1 end
+
+local function fg_grass_color(pixel_pos, fh)
+  if fh <= 1 then return FG_GRASS_COLORS[1] end
+  if pixel_pos == 0      then return FG_GRASS_COLORS[1] end  -- root shadow
+  if pixel_pos >= fh - 1 then return FG_GRASS_COLORS[4] end  -- dark tip
+  if pixel_pos == 1      then return FG_GRASS_COLORS[2] end  -- lower stem
+  return FG_GRASS_COLORS[3]                                   -- mid stem
+end
 
 local function grass_color(pixel_pos, gh)
   if gh <= 1 then return GRASS_COLORS[1] end
@@ -191,8 +206,8 @@ local function build_body_vt(art, tr, dx, max_x, grass_h, fg_grass_h)
     -- foreground grass overrides duck pixels in tr=6 only
     if tr == 6 and fg_grass_h then
       local fg = fg_grass_h[sc] or 0
-      if fg >= tp + 1 then t = grass_color(tp, fg) end
-      if fg >= bp + 1 then b = grass_color(bp, fg) end
+      if fg >= tp + 1 then t = fg_grass_color(tp, fg) end
+      if fg >= bp + 1 then b = fg_grass_color(bp, fg) end
     end
     local gh = (tr >= 4) and grass_h[sc] or 0
     local gt = (t == 0 and gh >= tp + 1) and grass_color(tp, gh) or 0
@@ -209,9 +224,9 @@ local function build_legs_vt(legs_row, dx, max_x, grass_h, fg_grass_h)
     local t   = (dc < DUCK_COLS) and (legs_row[dc + 1] or 0) or 0
     local gh  = grass_h[sc]
     local fg  = (fg_grass_h and fg_grass_h[sc]) or 0
-    local t_final  = (fg >= 2) and grass_color(1, fg) or t
+    local t_final  = (fg >= 2) and fg_grass_color(1, fg) or t
     local gt_final = (t_final == 0 and gh >= 2) and grass_color(1, gh) or 0
-    local gb_final = (fg >= 1) and grass_color(0, fg) or grass_color(0, gh)
+    local gb_final = (fg >= 1) and fg_grass_color(0, fg) or grass_color(0, gh)
     table.insert(vt, cell(t_final, 0, gt_final, gb_final))
   end
   return vt
@@ -379,8 +394,7 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
     state.fg_grass_h          = {}
     for sc = 0, state.max_x - 1 do
       state.grass_h[sc] = pat[sc + 1]
-      local v = GRASS_PAT[(sc * 3) % GRASS_PAT_N + 1]
-      state.fg_grass_h[sc] = (v >= 3) and math.min(3, v - 2) or 0
+      state.fg_grass_h[sc] = FG_BLADE_PAT[sc % FG_BLADE_PAT_N + 1]
     end
   end
 
