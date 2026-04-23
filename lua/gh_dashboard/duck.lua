@@ -268,9 +268,12 @@ local function draw_grass_only()
     local vt = {}
     for sc = 0, mxw - 1 do
       local gh = grass_h[sc]
-      local gt = (gh >= tp + 1) and grass_color(tp, gh) or 0
-      local gb = (gh >= bp + 1) and grass_color(bp, gh) or 0
-      table.insert(vt, cell(0, 0, gt, gb))
+      local fg = (tr == 6) and (state.fg_grass_h[sc] or 0) or 0
+      local t  = (fg >= tp + 1) and fg_grass_color(tp, fg) or 0
+      local b  = (fg >= bp + 1) and fg_grass_color(bp, fg) or 0
+      local gt = (t == 0 and gh >= tp + 1) and grass_color(tp, gh) or 0
+      local gb = (b == 0 and gh >= bp + 1) and grass_color(bp, gh) or 0
+      table.insert(vt, cell(t, b, gt, gb))
     end
     vim.api.nvim_buf_set_extmark(state.buf, duck_ns, state.base_line + tr, 0, {
       virt_text = vt, virt_text_pos = "eol",
@@ -281,9 +284,11 @@ local function draw_grass_only()
     local vt = {}
     for sc = 0, mxw - 1 do
       local gh = grass_h[sc]
-      local gt = (gh >= 2) and grass_color(1, gh) or 0
-      local gb = (gh >= 1) and grass_color(0, gh) or 0
-      table.insert(vt, cell(0, 0, gt, gb))
+      local fg = state.fg_grass_h[sc] or 0
+      local t_final  = (fg >= 2) and fg_grass_color(1, fg) or 0
+      local gt_final = (t_final == 0 and gh >= 2) and grass_color(1, gh) or 0
+      local gb_final = (fg >= 1) and fg_grass_color(0, fg) or grass_color(0, gh)
+      table.insert(vt, cell(t_final, 0, gt_final, gb_final))
     end
     vim.api.nvim_buf_set_extmark(state.buf, duck_ns, line7, 0, {
       virt_text = vt, virt_text_pos = "eol",
