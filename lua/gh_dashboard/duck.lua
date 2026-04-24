@@ -28,17 +28,9 @@ local COLORS = {
   "#d94040",  -- 21 flower red
   "#a8ffb0",  -- 22 shimmer bright-tip
   "#f5e050",  -- 23 firefly glow
-  "#1e4d1e",  -- 24 mid root
-  "#2a6629",  -- 25 mid stem
-  "#348034",  -- 26 mid upper
-  "#1c6e4a",  -- 27 mid tip
 }
 local GRASS_COLORS    = { 9, 10, 11, 12, 13, 14 }
 local FG_GRASS_COLORS = { 15, 16, 17, 18 }
-local MID_GRASS_COLORS = { 24, 25, 26, 27 }
-local MID_BLADE_PAT   = { 0,3,5,0,4,0,3,7,2,0,5,3,0,4,7,0,3 }
-local MID_BLADE_PAT_N = 17
-
 -- ── pixel art ──────────────────────────────────────────────────────────────
 -- 12 pixel rows × 14 cols per wing frame.
 -- Terminal rows 1-6 = duck body.  Terminal row 7 (contributions line) = legs.
@@ -163,12 +155,7 @@ end
 local flower_at   -- forward declaration; defined after state
 local sway        -- forward declaration; defined after state
 local grass_c     -- forward declaration; defined after state
-local bg_wc_for   -- forward declaration; defined after state
 local fly_color   -- forward declaration; defined after state
-local mid_wc_for   -- forward declaration; defined after state
-local mid_grass_at -- forward declaration; defined after state
-local mid_c        -- forward declaration; defined after state
-
 -- ── highlight cache ────────────────────────────────────────────────────────
 -- bg is only set when bg_idx ~= 0 (two explicit duck colors meeting at a
 -- half-block boundary).  When bg_idx == 0 the attribute is omitted so
@@ -235,16 +222,10 @@ local function build_body_vt(art, tr, duck_x, zone_start, zone_w, grass_h, fg_gr
       if fgh >= tp + 1 then t = fg_grass_color(tp, fg) end
       if fgh >= bp + 1 then b = fg_grass_color(bp, fg) end
     end
-    local raw_gh = (tr >= 4) and (grass_h[bg_wc_for(wc)] or 0) or 0
-    local gh_bg  = (tr >= 4) and math.max(0, math.min(8, raw_gh + sway(wc, 1.0, 0.35, 1.5))) or 0
-    local raw_mh = (tr >= 4) and mid_grass_at(wc) or 0
-    local gh_mid = (tr >= 4) and math.max(0, math.min(7, raw_mh + sway(wc, 1.15, 0.28, 1.0))) or 0
-    local gt_bg  = (t == 0 and gh_bg  >= tp + 1) and grass_c(tp, gh_bg,  wc) or 0
-    local gb_bg  = (b == 0 and gh_bg  >= bp + 1) and grass_c(bp, gh_bg,  wc) or 0
-    local gt_mid = (t == 0 and gh_mid >= tp + 1) and mid_c(tp, gh_mid)        or 0
-    local gb_mid = (b == 0 and gh_mid >= bp + 1) and mid_c(bp, gh_mid)        or 0
-    local gt = gt_mid ~= 0 and gt_mid or gt_bg
-    local gb = gb_mid ~= 0 and gb_mid or gb_bg
+    local gh_bg = (tr >= 4) and math.max(0, math.min(8,
+      (grass_h[wc] or 0) + sway(wc))) or 0
+    local gt = (t == 0 and gh_bg >= tp + 1) and grass_c(tp, gh_bg, wc) or 0
+    local gb = (b == 0 and gh_bg >= bp + 1) and grass_c(bp, gh_bg, wc) or 0
     local ft = flower_at(wc, tp)
     local fb = flower_at(wc, bp)
     if ft ~= 0 then t = ft; gt = 0 end
@@ -307,10 +288,7 @@ local state = {
   passes_total           = 2,
   run_active             = false,
   next_trigger_at        = nil,
-  wind_phase             = 0.0,
-  bg_drift               = 0.0,
-  mid_drift              = 0.0,
-  mid_grass_h            = {},
+  swaying                = {},
   shimmer_col            = 0,
   shimmer_ttl            = 30,
   fireflies              = {},
@@ -324,8 +302,10 @@ flower_at = function(wc, pixel_pos)
   return col and col[pixel_pos] or 0
 end
 
-sway = function(wc, phase_mul, freq, amp)
-  return math.floor(math.sin(state.wind_phase * phase_mul + wc * freq) * amp + 0.5)
+sway = function(wc)
+  local s = state.swaying[wc]
+  if not s then return 0 end
+  return math.floor(math.sin(s.phase) * s.amp + 0.5)
 end
 
 grass_c = function(pixel_pos, gh, wc)
@@ -333,26 +313,6 @@ grass_c = function(pixel_pos, gh, wc)
     return 22
   end
   return grass_color(pixel_pos, gh)
-end
-
-bg_wc_for = function(wc)
-  return (wc + math.floor(state.bg_drift)) % state.max_x
-end
-
-mid_wc_for = function(wc)
-  return (wc + math.floor(state.mid_drift)) % state.max_x
-end
-
-mid_grass_at = function(wc)
-  return state.mid_grass_h[mid_wc_for(wc)] or 0
-end
-
-mid_c = function(pixel_pos, gh)
-  if gh <= 1 then return MID_GRASS_COLORS[1] end
-  if pixel_pos == 0      then return MID_GRASS_COLORS[1] end
-  if pixel_pos >= gh - 1 then return MID_GRASS_COLORS[4] end
-  if pixel_pos == 1      then return MID_GRASS_COLORS[2] end
-  return MID_GRASS_COLORS[3]
 end
 
 fly_color = function(wc, pixel_pos)
@@ -542,10 +502,10 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
     state.grass_from_contribs = from_contribs
     state.grass_h             = {}
     state.fg_grass_h          = {}
+    state.swaying             = {}
     for sc = 0, state.max_x - 1 do
-      state.grass_h[sc]     = pat[sc + 1]
-      state.fg_grass_h[sc]  = FG_BLADE_PAT[sc % FG_BLADE_PAT_N + 1]
-      state.mid_grass_h[sc] = MID_BLADE_PAT[sc % MID_BLADE_PAT_N + 1]
+      state.grass_h[sc]    = pat[sc + 1]
+      state.fg_grass_h[sc] = FG_BLADE_PAT[sc % FG_BLADE_PAT_N + 1]
     end
     setup_flowers(state.left_w)
     state.fireflies = {}
@@ -592,20 +552,42 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
     state.wind_timer = wt
     wt:start(0, 120, vim.schedule_wrap(function()
       if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
-      state.wind_phase  = state.wind_phase + 0.18
+
+      -- Advance active blades; remove finished ones
+      for wc, s in pairs(state.swaying) do
+        s.phase = s.phase + s.speed
+        if s.phase >= math.pi * 2 then state.swaying[wc] = nil end
+      end
+
+      -- Occasionally start a new blade (keep at most 3 active)
+      local n = 0
+      for _ in pairs(state.swaying) do n = n + 1 end
+      if n < 3 and math.random() < 0.12 then
+        local wc = math.random(0, state.max_x - 1)
+        if not state.swaying[wc] then
+          state.swaying[wc] = {
+            phase = 0,
+            speed = 0.15 + math.random() * 0.12,
+            amp   = 1.0  + math.random() * 0.8,
+          }
+        end
+      end
+
+      -- Shimmer
       state.shimmer_ttl = state.shimmer_ttl - 1
       if state.shimmer_ttl <= 0 then
         state.shimmer_col = 0
-        state.shimmer_ttl = 45 + math.random(0, 20)
+        state.shimmer_ttl = 60 + math.random(0, 30)
       end
       state.shimmer_col = (state.shimmer_col + 2) % state.max_x
+
+      -- Fireflies
       for _, fly in ipairs(state.fireflies) do
         fly.phase = fly.phase + 0.35
         fly.x     = (fly.x + fly.vx + state.max_x) % state.max_x
       end
-      if not state.run_active then
-        draw_grass_only()
-      end
+
+      if not state.run_active then draw_grass_only() end
     end))
   end
 
