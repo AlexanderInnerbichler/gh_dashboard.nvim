@@ -55,35 +55,52 @@ M.render_heatmap = function(lines, hl_specs, contrib, items, username, win_width
     day_last_dates[day_idx] = last_date
   end
 
-  -- Pad all rows to the same display width + 1 so virt_text EOL anchors are consistent.
+  -- Pad all rows to the same display width so virt_text EOL anchors are consistent.
   local max_dw = 0
   for _, row in ipairs(heatmap_lines) do
     local dw = vim.api.nvim_strwidth(row)
     if dw > max_dw then max_dw = dw end
   end
   -- Centre the heatmap horizontally; left_pad spaces become the left grass zone.
+  -- Reserve 1 col of left_pad for the │ border character.
   local hm_content_w = max_dw + 1
-  local left_pad     = math.max(0, math.floor(((win_width or 120) - hm_content_w) / 2))
-  local pad_str      = string.rep(" ", left_pad)
+  local left_pad     = math.max(2, math.floor(((win_width or 120) - hm_content_w) / 2))
+  local border_pad   = left_pad - 1   -- spaces before the │ border char (≥ 1)
+  local border_str   = string.rep(" ", border_pad)
+  -- │ is 3 UTF-8 bytes but 1 display column; hl byte offsets need +2 correction.
+  local hl_col_off   = left_pad + 2
+
+  -- Build rows with │ borders; collect right-│ byte offsets for highlighting.
+  -- right_bar[i] = byte offset of the right │ in bordered row i.
+  local right_bar = {}
   for i, row in ipairs(heatmap_lines) do
     local dw = vim.api.nvim_strwidth(row)
-    heatmap_lines[i] = pad_str .. row .. string.rep(" ", max_dw - dw + 1)
+    right_bar[i] = border_pad + 3 + #row + (max_dw - dw)
+    heatmap_lines[i] = border_str .. "│" .. row .. string.rep(" ", max_dw - dw) .. "│"
   end
+
+  -- Top border
+  table.insert(lines, border_str .. "╭" .. string.rep("─", max_dw) .. "╮")
+  table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = border_pad, col_e = -1 })
 
   local base_line = #lines
   for i, row in ipairs(heatmap_lines) do
     table.insert(lines, row)
+    local ln = base_line + i - 1
+    -- Side border highlights (same grey as top/bottom)
+    table.insert(hl_specs, { hl = "GhSeparator", line = ln, col_s = border_pad,    col_e = border_pad + 3 })
+    table.insert(hl_specs, { hl = "GhSeparator", line = ln, col_s = right_bar[i],  col_e = right_bar[i] + 3 })
     for _, cell in ipairs(heatmap_hl[i] or {}) do
       table.insert(hl_specs, {
         hl    = M.HEAT_HLS[cell.tier],
-        line  = base_line + i - 1,
-        col_s = cell.col + left_pad,
-        col_e = cell.col + left_pad + 2,
+        line  = ln,
+        col_s = cell.col + hl_col_off,
+        col_e = cell.col + hl_col_off + 2,
       })
     end
     if items and username and day_last_dates[i] then
       table.insert(items, {
-        line     = base_line + i - 1,
+        line     = ln,
         kind     = "day",
         date     = day_last_dates[i],
         username = username,
@@ -91,14 +108,23 @@ M.render_heatmap = function(lines, hl_specs, contrib, items, username, win_width
     end
   end
 
-  local total_line = string.format("     %d contributions this year", contrib.total or 0)
-  local total_dw   = vim.api.nvim_strwidth(total_line)
-  local total_padded = pad_str .. total_line .. string.rep(" ", math.max(0, max_dw + 1 - total_dw))
+  local total_line    = string.format("     %d contributions this year", contrib.total or 0)
+  local total_dw      = vim.api.nvim_strwidth(total_line)
+  local total_padded  = border_str .. "│" .. total_line
+                        .. string.rep(" ", math.max(0, max_dw - total_dw)) .. "│"
   table.insert(lines, total_padded)
-  table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = left_pad, col_e = left_pad + #total_line })
+  local total_ln      = #lines - 1
+  local total_rbar    = border_pad + 3 + max_dw  -- total_line is ASCII so bytes == display cols
+  table.insert(hl_specs, { hl = "GhStats",    line = total_ln, col_s = hl_col_off,  col_e = hl_col_off + #total_line })
+  table.insert(hl_specs, { hl = "GhSeparator", line = total_ln, col_s = border_pad,  col_e = border_pad + 3 })
+  table.insert(hl_specs, { hl = "GhSeparator", line = total_ln, col_s = total_rbar,  col_e = total_rbar + 3 })
+
+  -- Bottom border + full-width separator
+  table.insert(lines, border_str .. "╰" .. string.rep("─", max_dw) .. "╯")
+  table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = border_pad, col_e = -1 })
   table.insert(lines, separator(win_width))
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
-  return left_pad
+  return border_pad
 end
 
 return M

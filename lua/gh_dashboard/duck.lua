@@ -25,6 +25,7 @@ local COLORS = {
   "#0a4a2a",  -- 18 fg tip   (dark teal)
   "#5ba8d8",  -- 19 flower blue
   "#e8f0f8",  -- 20 flower white
+  "#d94040",  -- 21 flower red
 }
 local GRASS_COLORS    = { 9, 10, 11, 12, 13, 14 }
 local FG_GRASS_COLORS = { 15, 16, 17, 18 }
@@ -88,7 +89,7 @@ local DUCK_COLS = 14
 
 local GRASS_PAT      = { 2,4,1,3,2,1,4,3,1,2,3,4,1,2,5,3,1,4,2,3 }
 local GRASS_PAT_N    = #GRASS_PAT
-local FG_BLADE_PAT   = { 0,0,4,3,0,0,6,0,0,4,3,0,0,2,3,0,5,4,0,3,2,0,0 }  -- 23 elems (prime vs 20)
+local FG_BLADE_PAT   = { 0,0,4,3,0,0,4,0,0,4,3,0,0,2,3,0,4,4,0,3,2,0,0 }  -- 23 elems (prime vs 20)
 local FG_BLADE_PAT_N = #FG_BLADE_PAT
 
 local TIER_TO_HEIGHT = { 3, 4, 5, 6, 7, 8 }  -- contribution tier 1-6 → grass height 3-8
@@ -130,20 +131,14 @@ end
 local function bot_pos(tr) return 2 * (7 - tr) end
 local function top_pos(tr) return 2 * (7 - tr) + 1 end
 
--- fh=5 = blue flower, fh=6 = white flower; both have effective stem height 4.
-local function fg_eff_h(fh)
-  return (fh == 5 or fh == 6) and 4 or fh
-end
+local function fg_eff_h(fh) return fh end
 
 local function fg_grass_color(pixel_pos, fh)
-  local eff = fg_eff_h(fh)
-  if eff <= 1 then return FG_GRASS_COLORS[1] end
-  if fh == 5 and pixel_pos >= 2 then return 19 end  -- blue flower head
-  if fh == 6 and pixel_pos >= 2 then return 20 end  -- white flower head
-  if pixel_pos == 0      then return FG_GRASS_COLORS[1] end  -- root shadow
-  if pixel_pos >= eff - 1 then return FG_GRASS_COLORS[4] end -- dark tip
-  if pixel_pos == 1      then return FG_GRASS_COLORS[2] end  -- lower stem
-  return FG_GRASS_COLORS[3]                                   -- mid stem
+  if fh <= 1 then return FG_GRASS_COLORS[1] end
+  if pixel_pos == 0      then return FG_GRASS_COLORS[1] end
+  if pixel_pos >= fh - 1 then return FG_GRASS_COLORS[4] end
+  if pixel_pos == 1      then return FG_GRASS_COLORS[2] end
+  return FG_GRASS_COLORS[3]
 end
 
 local function grass_color(pixel_pos, gh)
@@ -155,6 +150,8 @@ local function grass_color(pixel_pos, gh)
   if gh >= 7 and pixel_pos >= gh - 4         then return GRASS_COLORS[4] end  -- upper body (tall blades)
   return GRASS_COLORS[3]                                                        -- main stem
 end
+
+local flower_at  -- forward declaration; defined after state
 
 -- ── highlight cache ────────────────────────────────────────────────────────
 -- bg is only set when bg_idx ~= 0 (two explicit duck colors meeting at a
@@ -225,6 +222,10 @@ local function build_body_vt(art, tr, duck_x, zone_start, zone_w, grass_h, fg_gr
     local gh = (tr >= 4) and (grass_h[wc] or 0) or 0
     local gt = (t == 0 and gh >= tp + 1) and grass_color(tp, gh) or 0
     local gb = (b == 0 and gh >= bp + 1) and grass_color(bp, gh) or 0
+    local ft = flower_at(wc, tp)
+    local fb = flower_at(wc, bp)
+    if ft ~= 0 then t = ft; gt = 0 end
+    if fb ~= 0 then b = fb; gb = 0 end
     table.insert(vt, cell(t, b, gt, gb))
   end
   return vt
@@ -242,6 +243,10 @@ local function build_legs_vt(legs_row, duck_x, zone_start, zone_w, grass_h, fg_g
     local t_final  = (fgh >= 2) and fg_grass_color(1, fg) or t
     local gt_final = (t_final == 0 and gh >= 2) and grass_color(1, gh) or 0
     local gb_final = (fgh >= 1) and fg_grass_color(0, fg) or grass_color(0, gh)
+    local fft = flower_at(wc, 1)
+    local ffb = flower_at(wc, 0)
+    if fft ~= 0 then t_final = fft; gt_final = 0 end
+    if ffb ~= 0 then gb_final = ffb end
     table.insert(vt, cell(t_final, 0, gt_final, gb_final))
   end
   return vt
@@ -261,8 +266,10 @@ local state = {
   max_x                  = 40,
   left_w                 = 0,
   right_w                = 40,
+  hm_display_w           = 0,
   grass_h                = {},
   fg_grass_h             = {},
+  flowers                = {},
   grass_pat              = {},
   grass_from_contribs    = false,
   passes_done            = 0,
@@ -270,6 +277,54 @@ local state = {
   run_active             = false,
   next_trigger_at        = nil,
 }
+
+-- ── flower sprites ─────────────────────────────────────────────────────────
+
+flower_at = function(wc, pixel_pos)
+  local col = state.flowers[wc]
+  return col and col[pixel_pos] or 0
+end
+
+-- slot 1=petal, 2=core(white/20), 3=stem(dark/15)
+-- [col_offset] = { [pixel_row] = color_slot }
+local DAISY_SHAPE = {
+  [0] = { [5]=1, [6]=1 },
+  [1] = { [4]=1, [5]=1, [6]=1, [7]=1 },
+  [2] = { [0]=3, [1]=3, [2]=3, [3]=3, [4]=2, [5]=2, [6]=1, [7]=1 },
+  [3] = { [4]=1, [5]=1, [6]=1, [7]=1 },
+  [4] = { [5]=1, [6]=1 },
+}
+
+local STAR_SHAPE = {
+  [0] = { [4]=1, [7]=1 },
+  [1] = { [5]=1, [6]=1 },
+  [2] = { [0]=3, [1]=3, [2]=3, [3]=3, [4]=2, [5]=2, [6]=1, [7]=1 },
+  [3] = { [5]=1, [6]=1 },
+  [4] = { [4]=1, [7]=1 },
+}
+
+local function setup_flowers(lw)
+  state.flowers = {}
+  if lw < 5 then return end
+
+  local function place(center_wc, shape, petal_color)
+    for col_off = 0, 4 do
+      local wc = center_wc - 2 + col_off
+      local s  = shape[col_off]
+      if s then
+        state.flowers[wc] = state.flowers[wc] or {}
+        for px, slot in pairs(s) do
+          state.flowers[wc][px] = (slot == 1) and petal_color
+                               or (slot == 2) and 20
+                               or 15
+        end
+      end
+    end
+  end
+
+  place(lw - 5, DAISY_SHAPE, 19)
+  place(lw + math.floor(state.right_w * 3 / 4), STAR_SHAPE, 21)
+end
 
 -- ── run helpers ────────────────────────────────────────────────────────────
 
@@ -282,7 +337,8 @@ local function set_row(buf_line, vt_left, vt_right)
     })
   end
   vim.api.nvim_buf_set_extmark(state.buf, duck_ns, buf_line, 0, {
-    virt_text = vt_right, virt_text_pos = "eol",
+    virt_text = vt_right, virt_text_pos = "overlay",
+    virt_text_win_col = state.hm_display_w,
   })
 end
 
@@ -395,7 +451,7 @@ end
 M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contributions, left_w)
   local hm_w     = hm_display_w or 58
   local lw       = math.max(0, left_w or 0)
-  local rw       = math.max(DUCK_COLS + 1, (win_width or 160) - hm_w - 2)
+  local rw       = math.max(DUCK_COLS + 1, (win_width or 160) - hm_w)
   local new_max_x = lw + rw
   local pat, from_contribs = build_grass_pattern(contributions, new_max_x)
 
@@ -408,14 +464,16 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
       state.grass_h[sc] = pat[sc + 1]
       state.fg_grass_h[sc] = FG_BLADE_PAT[sc % FG_BLADE_PAT_N + 1]
     end
+    setup_flowers(state.left_w)
   end
 
   if state.trigger_timer then
-    state.buf       = buf
-    state.base_line = base_line
-    state.left_w    = lw
-    state.right_w   = rw
-    state.max_x     = new_max_x
+    state.buf          = buf
+    state.base_line    = base_line
+    state.left_w       = lw
+    state.right_w      = rw
+    state.hm_display_w = hm_w
+    state.max_x        = new_max_x
     apply_grass()
     if not state.run_active then draw_grass_only() end
     return
@@ -425,11 +483,12 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
   hl_cache = {}
   hl_count = 0
 
-  state.buf       = buf
-  state.base_line = base_line
-  state.left_w    = lw
-  state.right_w   = rw
-  state.max_x     = new_max_x
+  state.buf          = buf
+  state.base_line    = base_line
+  state.left_w       = lw
+  state.right_w      = rw
+  state.hm_display_w = hm_w
+  state.max_x        = new_max_x
   apply_grass()
 
   local ms = interval_ms or 400
