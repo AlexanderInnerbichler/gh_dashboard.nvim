@@ -389,6 +389,7 @@ end
 
 local function draw_grass_only()
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
+  vim.api.nvim_buf_clear_namespace(state.buf, duck_ns, 0, -1)
   local grass_h = state.grass_h
   local fg_h    = state.fg_grass_h
   local lw      = state.left_w
@@ -414,10 +415,7 @@ local function stop_run()
     state.timer = nil
   end
   state.run_active = false
-  if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
-    vim.api.nvim_buf_clear_namespace(state.buf, duck_ns, 0, -1)
-    draw_grass_only()
-  end
+  draw_grass_only()
 end
 
 local function start_run(interval_ms)
