@@ -28,6 +28,7 @@ local COLORS = {
   "#d94040",  -- 21 flower red
   "#a8ffb0",  -- 22 shimmer bright-tip
   "#f5e050",  -- 23 firefly glow
+  "#1a281a",  -- 24 hill silhouette (distant dark forest)
 }
 local GRASS_COLORS    = { 9, 10, 11, 12, 13, 14 }
 local FG_GRASS_COLORS = { 15, 16, 17, 18 }
@@ -156,6 +157,7 @@ local flower_at   -- forward declaration; defined after state
 local sway        -- forward declaration; defined after state
 local grass_c     -- forward declaration; defined after state
 local fly_color   -- forward declaration; defined after state
+local hill_at     -- forward declaration; defined after state
 -- ── highlight cache ────────────────────────────────────────────────────────
 -- bg is only set when bg_idx ~= 0 (two explicit duck colors meeting at a
 -- half-block boundary).  When bg_idx == 0 the attribute is omitted so
@@ -226,6 +228,8 @@ local function build_body_vt(art, tr, duck_x, zone_start, zone_w, grass_h, fg_gr
       (grass_h[wc] or 0) + sway(wc))) or 0
     local gt = (t == 0 and gh_bg >= tp + 1) and grass_c(tp, gh_bg, wc) or 0
     local gb = (b == 0 and gh_bg >= bp + 1) and grass_c(bp, gh_bg, wc) or 0
+    if t == 0 and gt == 0 then gt = hill_at(wc, tp) end
+    if b == 0 and gb == 0 then gb = hill_at(wc, bp) end
     local ft = flower_at(wc, tp)
     local fb = flower_at(wc, bp)
     if ft ~= 0 then t = ft; gt = 0 end
@@ -289,6 +293,7 @@ local state = {
   run_active             = false,
   next_trigger_at        = nil,
   swaying                = {},
+  hill_h                 = {},
   shimmer_col            = 0,
   shimmer_ttl            = 30,
   fireflies              = {},
@@ -322,6 +327,11 @@ fly_color = function(wc, pixel_pos)
     end
   end
   return 0
+end
+
+hill_at = function(wc, pixel_pos)
+  local hh = state.hill_h[wc] or 0
+  return hh >= pixel_pos + 1 and 24 or 0
 end
 
 -- slot 1=petal, 2=core(white/20), 3=stem(dark/15)
@@ -389,6 +399,11 @@ local function draw_grass_only()
   local lw      = state.left_w
   local rw      = state.right_w
   local no_duck = -(DUCK_COLS + 1)
+  for tr = 1, 3 do
+    set_row(state.base_line + tr,
+      build_body_vt(nil, tr, no_duck, 0,  lw, grass_h, fg_h),
+      build_body_vt(nil, tr, no_duck, lw, rw, grass_h, fg_h))
+  end
   for tr = 4, 6 do
     set_row(state.base_line + tr,
       build_body_vt(nil, tr, no_duck, 0,  lw, grass_h, fg_h),
@@ -506,6 +521,8 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
     for sc = 0, state.max_x - 1 do
       state.grass_h[sc]    = pat[sc + 1]
       state.fg_grass_h[sc] = FG_BLADE_PAT[sc % FG_BLADE_PAT_N + 1]
+      local raw_h = 9 + 3 * math.sin(sc * 0.08) + 2 * math.sin(sc * 0.19 + 1.4)
+      state.hill_h[sc] = math.max(6, math.min(13, math.floor(raw_h)))
     end
     setup_flowers(state.left_w)
     state.fireflies = {}
