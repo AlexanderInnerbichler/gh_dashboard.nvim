@@ -182,7 +182,7 @@ local function open_manager()
     border     = "rounded",
     title      = " Watched Users ",
     title_pos  = "center",
-    footer     = " a add  ·  d remove  ·  <CR> profile  ·  q close ",
+    footer     = " a add  ·  d/x remove  ·  <CR> profile  ·  q close ",
     footer_pos = "center",
   })
   vim.wo[state.manager_win].number         = false

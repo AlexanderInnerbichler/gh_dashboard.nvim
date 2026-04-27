@@ -5,6 +5,7 @@ local highlights = require("gh_dashboard.highlights")
 local fetch      = require("gh_dashboard.dashboard.fetch")
 local render     = require("gh_dashboard.dashboard.render")
 local duck       = require("gh_dashboard.duck")
+local gh         = require("gh_dashboard.gh")
 
 -- ── state ──────────────────────────────────────────────────────────────────
 
@@ -149,8 +150,8 @@ local function fetch_and_render()
       if err then state.data.issues_err = err else state.data.issues = issues end
       done(err ~= nil)
     end)
-    fetch.watched_users_activity(function(err, events)
-      if err then state.data.watched_events_err = err else state.data.watched_events = events end
+    fetch.activity_feed(function(err, events)
+      if err then state.data.feed_err = err else state.data.feed_events = events end
       done(err ~= nil)
     end)
     if login then
@@ -190,6 +191,8 @@ local function open_url_at_cursor()
         require("gh_dashboard.user_profile").open(item.username)
       elseif item.kind == "day" then
         require("gh_dashboard.day_activity").open(item.username, item.date)
+      elseif item.kind == "notifications" then
+        require("gh_dashboard.notifications").toggle()
       else
         vim.system({ "xdg-open", item.url })
       end
@@ -222,7 +225,7 @@ local function open_win()
   local row    = math.floor((ui.height - height) / 2)
   local col    = math.floor((ui.width  - width)  / 2)
 
-  local footer_default = " <CR> open  ·  w watch  ·  r refresh  ·  <leader>gw watchlist  ·  <leader>gn notifs  ·  q close "
+  local footer_default = " <CR> open  ·  s repos  ·  w watch  ·  r refresh  ·  <leader>gw watchlist  ·  <leader>gn notifs  ·  q close "
   local footer_pr      = " <CR> open  ·  d diff  ·  w watch  ·  r refresh  ·  q close "
 
   state.win = vim.api.nvim_open_win(state.buf, true, {
@@ -284,7 +287,9 @@ local function open_win()
     state.is_stale = false
     fetch_and_render()
   end)
-  buf_map("s", function() require("gh_dashboard.repo_picker").open() end)
+  buf_map("s",           function() require("gh_dashboard.repo_picker").open() end)
+  buf_map("<leader>gw", function() require("gh_dashboard.watchlist").toggle() end)
+  buf_map("<leader>gn", function() require("gh_dashboard.notifications").toggle() end)
   require("gh_dashboard.help").setup_keymap(state.buf, "dashboard")
 
   vim.api.nvim_create_autocmd("CursorMoved", {
@@ -323,6 +328,17 @@ M.toggle = function()
     state.data = state.data or {}
     fetch_and_render()
   end
+
+  gh.check_rate_limit(function(info)
+    if not info then return end
+    if info.core < 200 then
+      local reset_in = math.max(0, info.reset - os.time())
+      vim.notify(
+        string.format("GitHub rate limit low: %d core requests remaining (resets in %dm)",
+          info.core, math.ceil(reset_in / 60)),
+        vim.log.levels.WARN, { title = "GhDashboard" })
+    end
+  end)
 end
 
 M.setup = function(opts)

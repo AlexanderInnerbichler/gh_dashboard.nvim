@@ -11,7 +11,7 @@ local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
 -- ── fetch functions ────────────────────────────────────────────────────────
 
 local function fetch_user_profile(username, callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api", "/users/" .. username,
       "--jq", "{login:.login,name:.name,bio:.bio,followers:.followers,following:.following,public_repos:.public_repos}" },
     callback

@@ -20,3 +20,7 @@ end, { desc = "Fuzzy search GitHub repos" })
 vim.api.nvim_create_user_command("GhDebug", function()
   require("gh_dashboard").debug()
 end, { desc = "Show GhDashboard debug info" })
+
+vim.keymap.set("n", "<leader>gn", function()
+  require("gh_dashboard.notifications").toggle()
+end, { desc = "Toggle GitHub Notifications" })

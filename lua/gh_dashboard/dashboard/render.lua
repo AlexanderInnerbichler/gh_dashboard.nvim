@@ -49,7 +49,7 @@ end
 
 -- ── section renderers ──────────────────────────────────────────────────────
 
-local function render_profile(lines, hl_specs, profile, total_contrib, win_width, is_loading, is_stale, notif_count)
+local function render_profile(lines, hl_specs, items, profile, total_contrib, win_width, is_loading, is_stale, notif_count)
   local loading_tag = is_loading and "  [loading…]" or ""
   local stale_tag   = is_stale   and "  [stale]"    or ""
   local login    = (profile and profile.login) or "GitHub"
@@ -70,22 +70,24 @@ local function render_profile(lines, hl_specs, profile, total_contrib, win_width
   end
 
   if profile then
-    local notif_str = (notif_count and notif_count > 0) and ("  🔔 " .. notif_count .. " unread") or ""
     local stats = string.format(
       "  👥 %d followers · %d following · %d repos · %d contributions",
       profile.followers or 0, profile.following or 0,
       profile.public_repos or 0, total_contrib or 0
-    ) .. notif_str
+    )
     table.insert(lines, stats)
-    local stats_base = #stats - #notif_str
-    table.insert(hl_specs, { hl = "GhStats",       line = #lines - 1, col_s = 0,          col_e = stats_base })
-    if notif_str ~= "" then
-      table.insert(hl_specs, { hl = "GhNotifUnread", line = #lines - 1, col_s = stats_base, col_e = #stats })
-    end
+    table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 0, col_e = #stats })
     if profile.bio and profile.bio ~= "" and profile.bio ~= vim.NIL then
       local bio = "  " .. profile.bio
       table.insert(lines, bio)
       table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 0, col_e = #bio })
+    end
+    if notif_count and notif_count > 0 then
+      local s = string.format("  🔔 %d unread notification%s",
+        notif_count, notif_count == 1 and "" or "s")
+      table.insert(items, { line = #lines, kind = "notifications" })
+      table.insert(lines, s)
+      table.insert(hl_specs, { hl = "GhNotifUnread", line = #lines - 1, col_s = 0, col_e = -1 })
     end
   end
   table.insert(lines, separator(win_width))
@@ -190,32 +192,40 @@ local function render_issues(lines, hl_specs, items, issues, err, win_width)
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
 end
 
-local function render_watched_repos(lines, hl_specs, items, win_width)
-  local repos = require("gh_dashboard.watchlist").get_repos() or {}
-  if #repos == 0 then return end
-
-  local header = "  Watched Repos (" .. #repos .. ")"
-  table.insert(lines, header)
-  table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
-
-  for _, entry in ipairs(repos) do
-    local full_name = entry.owner .. "/" .. entry.repo
-    local line = "   ● " .. full_name
-    table.insert(items, { line = #lines, kind = "repo", full_name = full_name })
-    table.insert(lines, line)
-    local ln = #lines - 1
-    table.insert(hl_specs, { hl = "GhWatchIndicator", line = ln, col_s = 3, col_e = 4 })
-    table.insert(hl_specs, { hl = "GhItem",           line = ln, col_s = 5, col_e = -1 })
-  end
-
-  table.insert(lines, separator(win_width))
-  table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
+local function event_desc(ev)
+  local t, a = ev.type or "", ev.action or ""
+  if t == "PushEvent" then
+    local ref = (type(ev.ref) == "string" and ev.ref or ""):gsub("refs/heads/", "")
+    return "pushed to " .. (ref ~= "" and ref or "?")
+  elseif t == "PullRequestEvent" then
+    local n = type(ev.pr_number) == "number" and ("#" .. ev.pr_number) or ""
+    if a == "opened"       then return "opened PR " .. n
+    elseif a == "closed"   then return (ev.merged == true and "merged" or "closed") .. " PR " .. n
+    elseif a == "reopened" then return "reopened PR " .. n
+    else                        return a .. " PR " .. n end
+  elseif t == "IssuesEvent" then
+    local n = type(ev.issue_number) == "number" and ("#" .. ev.issue_number) or ""
+    return a .. " issue " .. n
+  elseif t == "IssueCommentEvent" then
+    local n = type(ev.issue_number) == "number" and ("#" .. ev.issue_number) or ""
+    return "commented on " .. n
+  elseif t == "CreateEvent" then
+    return "created " .. (type(ev.ref_type) == "string" and ev.ref_type or "?")
+  elseif t == "ReleaseEvent" then
+    return "released " .. (type(ev.release_tag) == "string" and ev.release_tag or "?")
+  elseif t == "ForkEvent"  then return "forked"
+  elseif t == "WatchEvent" then return "starred"
+  else return t:gsub("Event", ""):lower() end
 end
 
-local function render_watched_users(lines, hl_specs, items, events, err)
-  if not err and events == nil then return end
+local function render_activity_feed(lines, hl_specs, items, events, err)
+  local users = require("gh_dashboard.user_watchlist").get_users()
+  local repos = require("gh_dashboard.watchlist").get_repos()
+  local has_sources = #users > 0 or #repos > 0
+  if not has_sources and not err and events == nil then return end
 
-  local header = "  Watched Users"
+  local count  = (not err and events) and #events or nil
+  local header = count ~= nil and ("  Activity Feed (" .. count .. ")") or "  Activity Feed"
   table.insert(lines, header)
   table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
 
@@ -223,52 +233,49 @@ local function render_watched_users(lines, hl_specs, items, events, err)
     local msg = "  ✗ " .. sl(err)
     table.insert(lines, msg)
     table.insert(hl_specs, { hl = "GhError", line = #lines - 1, col_s = 0, col_e = #msg })
-  elseif #events == 0 then
-    local msg = "   No recent activity from watched users"
+  elseif not events or #events == 0 then
+    local msg = has_sources
+      and "   No recent activity from watched users or repos"
+      or  "   Add users or repos to your watchlists to see activity here"
     table.insert(lines, msg)
     table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
   else
-    local actor_order  = {}
-    local actor_events = {}
     for _, ev in ipairs(events) do
+      local icon  = EVENT_ICONS[ev.type] or "·"
       local actor = sl(ev.actor or "?")
-      if not actor_events[actor] then
-        table.insert(actor_order, actor)
-        actor_events[actor] = {}
-      end
-      table.insert(actor_events[actor], ev)
-    end
+      local repo  = sl(ev.repo  or "?")
+      local desc  = event_desc(ev)
+      local age   = age_string(ev.created_at)
+      local line  = string.format("  %s  %-18s  %-24s  %-28s  %s",
+        icon, "@" .. trunc(actor, 17), trunc(repo, 24), trunc(desc, 28), age)
 
-    for _, actor in ipairs(actor_order) do
-      local actor_line = "   @" .. actor
-      table.insert(items, { line = #lines, kind = "user", username = actor })
-      table.insert(lines, actor_line)
-      table.insert(hl_specs, { hl = "GhSection",  line = #lines - 1, col_s = 0, col_e = 4 })
-      table.insert(hl_specs, { hl = "GhUsername", line = #lines - 1, col_s = 4, col_e = #actor_line })
-
-      for _, ev in ipairs(actor_events[actor]) do
-        local icon = EVENT_ICONS[ev.type] or "·"
-        local repo = trunc(ev.repo or "?", 32)
-        local age  = age_string(ev.created_at)
-        local line = string.format("      %s  %-32s  %s", icon, repo, age)
-        if ev.type == "PullRequestEvent" and ev.pr_number and ev.pr_number ~= vim.NIL then
-          table.insert(items, { line = #lines, kind = "pr", number = ev.pr_number, repo = ev.repo })
-        elseif ev.type == "IssuesEvent" and ev.issue_number and ev.issue_number ~= vim.NIL then
-          table.insert(items, { line = #lines, kind = "issue", number = ev.issue_number, repo = ev.repo })
-        else
-          table.insert(items, { line = #lines, kind = "push", url = "https://github.com/" .. (ev.repo or "") })
-        end
-        table.insert(lines, line)
-        local icon_hl  = "GhStats"
-        if ev.type == "PushEvent"        then icon_hl = "GhPush"
-        elseif ev.type == "PullRequestEvent" then icon_hl = "GhPR"
-        elseif ev.type == "IssuesEvent" or ev.type == "IssueCommentEvent" then icon_hl = "GhIssue"
-        end
-        local icon_col = 6
-        local meta_col = icon_col + #icon + 2 + 32 + 2
-        table.insert(hl_specs, { hl = icon_hl,  line = #lines - 1, col_s = icon_col, col_e = icon_col + #icon })
-        table.insert(hl_specs, { hl = "GhMeta", line = #lines - 1, col_s = meta_col, col_e = -1 })
+      if ev.type == "PullRequestEvent" and type(ev.pr_number) == "number" then
+        table.insert(items, { line = #lines, kind = "pr",    number = ev.pr_number,    repo = ev.repo })
+      elseif (ev.type == "IssuesEvent" or ev.type == "IssueCommentEvent")
+          and type(ev.issue_number) == "number" then
+        table.insert(items, { line = #lines, kind = "issue", number = ev.issue_number, repo = ev.repo })
+      else
+        table.insert(items, { line = #lines, kind = "user",  username = ev.actor })
       end
+
+      table.insert(lines, line)
+      local ln        = #lines - 1
+      local icon_col  = 2
+      local actor_col = icon_col + #icon + 2
+      local repo_col  = actor_col + 18 + 2
+      local desc_col  = repo_col  + 24 + 2
+      local age_col   = desc_col  + 28 + 2
+
+      local icon_hl = "GhStats"
+      if ev.type == "PushEvent" then icon_hl = "GhPush"
+      elseif ev.type == "PullRequestEvent" then icon_hl = "GhPR"
+      elseif ev.type == "IssuesEvent" or ev.type == "IssueCommentEvent" then icon_hl = "GhIssue"
+      end
+
+      table.insert(hl_specs, { hl = icon_hl,      line = ln, col_s = icon_col,  col_e = icon_col + #icon })
+      table.insert(hl_specs, { hl = "GhUsername", line = ln, col_s = actor_col, col_e = actor_col + 18 })
+      table.insert(hl_specs, { hl = "GhItem",     line = ln, col_s = repo_col,  col_e = repo_col  + 24 })
+      table.insert(hl_specs, { hl = "GhMeta",     line = ln, col_s = age_col,   col_e = -1 })
     end
   end
   table.insert(lines, separator())
@@ -286,14 +293,13 @@ function M.build(data, is_loading, is_stale, win_width)
 
   table.insert(lines, "")  -- top padding
 
-  render_profile(lines, hl_specs, data.profile, data.contributions and data.contributions.total,
+  render_profile(lines, hl_specs, items, data.profile, data.contributions and data.contributions.total,
     win_width, is_loading, is_stale, data.notif_count)
   local login = data.profile and data.profile.login
   local hm_left_pad = heatmap.render_heatmap(lines, hl_specs, data.contributions, items, login, win_width)
   render_prs(lines, hl_specs, items, data.prs, data.prs_err, win_width)
   render_issues(lines, hl_specs, items, data.issues, data.issues_err, win_width)
-  render_watched_repos(lines, hl_specs, items, win_width)
-  render_watched_users(lines, hl_specs, items, data.watched_events, data.watched_events_err)
+  render_activity_feed(lines, hl_specs, items, data.feed_events, data.feed_err)
 
   return lines, hl_specs, items, hm_left_pad or 0
 end

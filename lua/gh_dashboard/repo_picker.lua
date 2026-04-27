@@ -144,7 +144,7 @@ local function search_github(query)
   state.gh_results   = {}
   rebuild_filtered()
 
-  gh.run(
+  gh.run_with_retry(
     { "gh", "search", "repos", query,
       "--limit", "20",
       "--json", "fullName,language,stargazersCount,isPrivate,pushedAt" },
@@ -188,7 +188,7 @@ local function fetch_repos()
     apply_filter("")
   end
 
-  gh.run(
+  gh.run_with_retry(
     { "gh", "repo", "list", "--limit", "1000",
       "--json", "nameWithOwner,primaryLanguage,stargazerCount,isPrivate,pushedAt" },
     function(err, data)
@@ -273,6 +273,8 @@ local function open_windows()
     border     = "rounded",
     title      = " Results ",
     title_pos  = "left",
+    footer     = " <CR> open  ·  <Tab> back to search  ·  q close ",
+    footer_pos = "center",
   })
   vim.wo[state.list_win].number         = false
   vim.wo[state.list_win].relativenumber = false

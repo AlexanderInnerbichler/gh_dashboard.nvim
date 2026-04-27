@@ -70,7 +70,7 @@ local function render_jobs(jobs, logs_by_job_id)
   table.insert(lines, "")
 
   -- Run summary header
-  local c          = item.conclusion or "unknown"
+  local c          = type(item.conclusion) == "string" and item.conclusion or "in_progress"
   local icon, icon_hl = conclusion_icon(c)
   local summary    = "  Run: " .. sl(item.run_name or "?") .. "  ·  " .. sl(item.repo or "?")
     .. "  ·  " .. icon .. "  " .. c
@@ -101,7 +101,7 @@ local function render_jobs(jobs, logs_by_job_id)
 
       -- Step summary line
       local step_parts = {}
-      for _, step in ipairs(job.steps or {}) do
+      for _, step in ipairs(type(job.steps) == "table" and job.steps or {}) do
         local sicon = conclusion_icon(step.conclusion)
         table.insert(step_parts, sicon .. " " .. sl(step.name or ""))
       end
@@ -116,7 +116,7 @@ local function render_jobs(jobs, logs_by_job_id)
   -- Logs for failed jobs
   local failed_jobs = {}
   for _, job in ipairs(jobs or {}) do
-    if job.conclusion == "failure" then
+    if type(job.conclusion) == "string" and job.conclusion == "failure" then
       table.insert(failed_jobs, job)
     end
   end
@@ -178,10 +178,10 @@ local function fetch_and_render()
   local item = state.item
   write_buf({ "", "  ⠋ loading jobs…" }, {})
 
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api",
       "repos/" .. item.repo .. "/actions/runs/" .. tostring(item.run_id) .. "/jobs",
-      "--jq", "[.jobs[] | {id,name,status,conclusion,steps:[.steps[]|{name,conclusion,number}]}]" },
+      "--jq", "[(.jobs//[])[] | {id,name,status,conclusion,steps:[(.steps//[])[]|{name,conclusion,number}]}]" },
     function(err, jobs)
       if err then
         write_buf({ "", "  ✗ " .. sl(err) }, {})
@@ -191,7 +191,7 @@ local function fetch_and_render()
       -- collect failed job IDs
       local failed = {}
       for _, job in ipairs(jobs or {}) do
-        if job.conclusion == "failure" then
+        if type(job.conclusion) == "string" and job.conclusion == "failure" then
           table.insert(failed, job)
         end
       end
@@ -281,6 +281,7 @@ local function open_win()
   bmap("q",     close_win)
   bmap("<Esc>", close_win)
   bmap("r",     function() if state.item then fetch_and_render() end end)
+  require("gh_dashboard.help").setup_keymap(state.buf, "run_view")
 
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer   = state.buf,

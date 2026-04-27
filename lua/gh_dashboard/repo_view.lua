@@ -217,7 +217,9 @@ local function render(data)
     table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
   else
     for _, run in ipairs(data.runs) do
-      local c    = run.conclusion
+      local c    = (type(run.conclusion) == "string" and run.conclusion)
+               or (type(run.status)    == "string" and run.status)
+               or ""
       local icon, hl_icon
       if c == "success" then
         icon, hl_icon = "✓", "GhCiPass"
@@ -267,7 +269,7 @@ local function fetch_and_render()
     render(data)
   end
 
-  gh.run(
+  gh.run_with_retry(
     { "gh", "issue", "list", "-R", full_name, "--state", "open",
       "--json", "number,title,labels,author,updatedAt", "--limit", "20" },
     function(err, issues)
@@ -275,7 +277,7 @@ local function fetch_and_render()
       done()
     end
   )
-  gh.run(
+  gh.run_with_retry(
     { "gh", "pr", "list", "-R", full_name, "--state", "open",
       "--json", "number,title,author,isDraft,updatedAt", "--limit", "10" },
     function(err, prs)
@@ -283,7 +285,7 @@ local function fetch_and_render()
       done()
     end
   )
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api", "repos/" .. full_name .. "/branches",
       "--jq", "[.[] | {name:.name}] | .[0:15]" },
     function(err, branches)
@@ -291,7 +293,7 @@ local function fetch_and_render()
       done()
     end
   )
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api", "repos/" .. full_name .. "/actions/runs",
       "--jq", "[.workflow_runs[:10] | .[] | {id,name,status,conclusion,head_branch,event,updated_at}]" },
     function(err, runs)
@@ -438,7 +440,7 @@ local function open_win()
     border     = "rounded",
     title      = title,
     title_pos  = "center",
-    footer     = " <CR> open  ·  n new issue  ·  r refresh  ·  q close ",
+    footer     = " <CR>/o open  ·  n new issue  ·  r refresh  ·  ? help  ·  q close ",
     footer_pos = "center",
   })
   vim.wo[state.win].number         = false
@@ -454,12 +456,7 @@ local function open_win()
     vim.keymap.set("n", lhs, fn, { buffer = state.buf, nowait = true, silent = true })
   end
 
-  bmap("q",     close_win)
-  bmap("<Esc>", close_win)
-  bmap("r", function()
-    if state.item then M.open(state.item) end
-  end)
-  bmap("<CR>", function()
+  local function open_item_at_cursor()
     if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
     local cur = vim.api.nvim_win_get_cursor(state.win)[1] - 1
     for _, item in ipairs(state.items) do
@@ -472,7 +469,16 @@ local function open_win()
         return
       end
     end
+  end
+
+  bmap("q",     close_win)
+  bmap("<Esc>", close_win)
+  bmap("r", function()
+    if state.item then M.open(state.item) end
   end)
+  bmap("<CR>", open_item_at_cursor)
+  bmap("o",    open_item_at_cursor)
+  require("gh_dashboard.help").setup_keymap(state.buf, "repo_view")
   bmap("n", function()
     if not state.item then return end
     local repo = state.item.full_name

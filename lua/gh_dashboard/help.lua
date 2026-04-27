@@ -37,6 +37,18 @@ local HELP = {
     { key = "q / <Esc>",   desc = "Close" },
     { key = "?",           desc = "Toggle this help" },
   },
+  repo_view = {
+    { key = "<CR> / o",    desc = "Open issue / PR / run" },
+    { key = "n",           desc = "New issue" },
+    { key = "r",           desc = "Refresh" },
+    { key = "q / <Esc>",   desc = "Close" },
+    { key = "?",           desc = "Toggle this help" },
+  },
+  run_view = {
+    { key = "r",           desc = "Refresh" },
+    { key = "q / <Esc>",   desc = "Close" },
+    { key = "?",           desc = "Toggle this help" },
+  },
 }
 
 -- ── state ──────────────────────────────────────────────────────────────────
@@ -83,7 +95,7 @@ local function open(context)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
 
-  local titles = { dashboard = "Dashboard Help", reader = "Reader Help", diff = "Diff Help", notifications = "Notifications Help" }
+  local titles = { dashboard = "Dashboard Help", reader = "Reader Help", diff = "Diff Help", notifications = "Notifications Help", repo_view = "Repo Help", run_view = "Run Help" }
   local win = vim.api.nvim_open_win(buf, true, {
     relative   = "editor",
     width      = win_w,

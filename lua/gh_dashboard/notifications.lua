@@ -59,7 +59,7 @@ local function age_string(iso8601)
 end
 
 local function parse_subject(url, stype)
-  if not url then return nil, nil, nil end
+  if type(url) ~= "string" then return nil, nil, nil end
   local repo, num = url:match("repos/([^/]+/[^/]+)/[^/]+/(%d+)")
   if not repo or not num then return nil, nil, nil end
   local kind = (stype == "PullRequest") and "pr" or "issue"

@@ -33,7 +33,7 @@ function M.fetch_readme(item, callback)
 end
 
 function M.fetch_issue(item, callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "issue", "view", tostring(item.number), "-R", item.repo,
       "--json", "number,title,state,body,labels,author,comments,createdAt,assignees,url" },
     function(err, raw)
@@ -70,7 +70,7 @@ function M.fetch_issue(item, callback)
 end
 
 function M.fetch_pr(item, callback)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "pr", "view", tostring(item.number), "-R", item.repo,
       "--json", "number,title,state,body,author,headRefName,baseRefName,reviews,statusCheckRollup,comments,createdAt,isDraft,mergeable,url,assignees" },
     function(err, raw)

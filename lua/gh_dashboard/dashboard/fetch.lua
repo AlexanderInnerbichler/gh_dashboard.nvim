@@ -232,36 +232,48 @@ function M.notifications(callback)
   )
 end
 
-function M.watched_users_activity(callback)
+function M.activity_feed(callback)
   local users = require("gh_dashboard.user_watchlist").get_users()
-  if not users or #users == 0 then callback(nil, nil) return end
-  local pending    = #users
+  local repos = require("gh_dashboard.watchlist").get_repos()
+  local total = #users + #repos
+  if total == 0 then callback(nil, nil) return end
+
   local all_events = {}
+  local pending    = total
   local last_err
+
+  local JQ = '[.[] | {type, actor:.actor.login, repo:.repo.name, created_at,' ..
+    'action:.payload.action, merged:.payload.pull_request.merged,' ..
+    'pr_number:.payload.pull_request.number, issue_number:.payload.issue.number,' ..
+    'ref:.payload.ref, ref_type:.payload.ref_type,' ..
+    'release_tag:.payload.release.tag_name}] | .[0:20]'
+
+  local function collect(err, events)
+    if err then last_err = err
+    else for _, ev in ipairs(events or {}) do table.insert(all_events, ev) end
+    end
+    pending = pending - 1
+    if pending == 0 then
+      table.sort(all_events, function(a, b)
+        return (a.created_at or "") > (b.created_at or "")
+      end)
+      local top = {}
+      for i = 1, math.min(20, #all_events) do top[i] = all_events[i] end
+      if #top == 0 and last_err then callback(last_err, nil)
+      else callback(nil, top) end
+    end
+  end
+
   for _, username in ipairs(users) do
     gh.run_with_retry(
-      { "gh", "api", "/users/" .. username .. "/events",
-        "--jq", "[.[] | {type, actor: .actor.login, repo: .repo.name, created_at, action:.payload.action, merged:.payload.pull_request.merged, pr_number:.payload.pull_request.number, issue_number:.payload.issue.number}] | .[0:20]" },
-      function(ferr, events)
-        if ferr then
-          last_err = ferr
-        else
-          for _, ev in ipairs(events or {}) do table.insert(all_events, ev) end
-        end
-        pending = pending - 1
-        if pending == 0 then
-          table.sort(all_events, function(a, b)
-            return (a.created_at or "") > (b.created_at or "")
-          end)
-          local top = {}
-          for i = 1, math.min(10, #all_events) do top[i] = all_events[i] end
-          if #top == 0 and last_err then
-            callback(last_err, nil)
-          else
-            callback(nil, top)
-          end
-        end
-      end
+      { "gh", "api", "/users/" .. username .. "/events", "--jq", JQ },
+      function(err, evs) collect(err, evs) end
+    )
+  end
+  for _, r in ipairs(repos) do
+    gh.run_with_retry(
+      { "gh", "api", "/repos/" .. r.owner .. "/" .. r.repo .. "/events", "--jq", JQ },
+      function(err, evs) collect(err, evs) end
     )
   end
 end

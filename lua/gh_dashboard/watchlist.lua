@@ -15,6 +15,7 @@ local POLL_DELAY_MS  = 5000
 local state = {
   repos        = {},   -- list of { owner, repo, last_seen_id }
   poll_timer   = nil,
+  polling      = false,
   notifs       = {},   -- list of { win, buf, timer, _repo, _ev }
   history      = {},   -- list of { _repo, _ev } newest-first
   manager_buf  = nil,
@@ -252,7 +253,7 @@ local function mark_seen(entry, ev_id)
 end
 
 local function seed_seen(entry)
-  gh.run(
+  gh.run_with_retry(
     { "gh", "api", "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
       "--jq", "[.[] | {id}] | .[0:10]" },
     function(err, events)
@@ -265,45 +266,47 @@ local function seed_seen(entry)
   )
 end
 
-local function poll_repo(entry)
+local function poll_repo(entry, on_done)
   gh.run_with_retry(
     { "gh", "api",
       "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
       "--jq", "[.[] | {id,type,created_at,payload}] | .[0:10]" },
     function(err, events)
-      if err or not events or type(events) ~= "table" or #events == 0 then return end
-      local new_events  = {}
-      local notif_items = {}  -- dedup: one notification per issue/PR per poll
-      for _, ev in ipairs(events) do
-        local ev_id = tostring(ev.id)
-        if is_new(entry, ev_id) then
-          mark_seen(entry, ev_id)
-          local p   = ev.payload or {}
-          local num = (type(p.issue) == "table" and p.issue.number)
-                   or (type(p.pull_request) == "table" and p.pull_request.number)
-          local key = ev.type .. ":" .. tostring(num or ev_id)
-          if not notif_items[key] then
-            notif_items[key] = true
-            table.insert(new_events, ev)
+      if not (err or not events or type(events) ~= "table" or #events == 0) then
+        local new_events  = {}
+        local notif_items = {}  -- dedup: one notification per issue/PR per poll
+        for _, ev in ipairs(events) do
+          local ev_id = tostring(ev.id)
+          if is_new(entry, ev_id) then
+            mark_seen(entry, ev_id)
+            local p   = ev.payload or {}
+            local num = (type(p.issue) == "table" and p.issue.number)
+                     or (type(p.pull_request) == "table" and p.pull_request.number)
+            local key = ev.type .. ":" .. tostring(num or ev_id)
+            if not notif_items[key] then
+              notif_items[key] = true
+              table.insert(new_events, ev)
+            end
+          end
+        end
+        if #new_events > 0 then
+          save_watchlist()
+          for _, ev in ipairs(new_events) do
+            local ok, perr = pcall(show_notification, entry.owner .. "/" .. entry.repo, ev)
+            if not ok then
+              vim.notify("watchlist: notif error — " .. tostring(perr), vim.log.levels.WARN)
+            end
           end
         end
       end
-      if #new_events > 0 then
-        save_watchlist()
-        for _, ev in ipairs(new_events) do
-          local ok, err = pcall(show_notification, entry.owner .. "/" .. entry.repo, ev)
-          if not ok then
-            vim.notify("watchlist: notif error — " .. tostring(err), vim.log.levels.WARN)
-          end
-        end
-      end
+      if on_done then on_done() end
     end
   )
 end
 
 local function seed_history()
   for _, entry in ipairs(state.repos) do
-    gh.run(
+    gh.run_with_retry(
       { "gh", "api",
         "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
         "--jq", "[.[] | {id,type,created_at,payload}] | .[0:5]" },
@@ -322,8 +325,16 @@ local function seed_history()
 end
 
 local function poll()
+  if state.polling then return end
+  if #state.repos == 0 then return end
+  state.polling = true
+  local pending = #state.repos
+  local function on_done()
+    pending = pending - 1
+    if pending == 0 then state.polling = false end
+  end
   for _, entry in ipairs(state.repos) do
-    poll_repo(entry)
+    poll_repo(entry, on_done)
   end
 end
 
@@ -495,7 +506,7 @@ local function open_manager()
     border     = "rounded",
     title      = " Watched Repos ",
     title_pos  = "center",
-    footer     = " <CR> view  ·  a add  ·  d remove  ·  q close ",
+    footer     = " <CR> view  ·  a add  ·  d/x remove  ·  q close ",
     footer_pos = "center",
   })
   vim.wo[state.manager_win].number         = false

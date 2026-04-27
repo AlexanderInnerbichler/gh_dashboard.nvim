@@ -1,4 +1,5 @@
 local M = {}
+local gh = require("gh_dashboard.gh")
 
 local ns = vim.api.nvim_create_namespace("GhDayActivity")
 
@@ -6,23 +7,11 @@ local ns = vim.api.nvim_create_namespace("GhDayActivity")
 
 local function fetch_day_events(username, date, callback)
   local jq = '[.[] | select(.created_at | startswith("' .. date .. '"))]'
-  vim.system(
+  gh.run_with_retry(
     { "gh", "api", "/users/" .. username .. "/events", "--jq", jq },
-    { text = true },
-    function(result)
-      vim.schedule(function()
-        if result.code ~= 0 then
-          callback(result.stderr or "gh error", nil)
-          return
-        end
-        local ok, decoded = pcall(vim.fn.json_decode, result.stdout)
-        if not ok then
-          callback("json decode error", nil)
-          return
-        end
-        if type(decoded) ~= "table" then decoded = {} end
-        callback(nil, decoded)
-      end)
+    function(err, data)
+      if err then callback(err, nil) return end
+      callback(nil, type(data) == "table" and data or {})
     end
   )
 end
