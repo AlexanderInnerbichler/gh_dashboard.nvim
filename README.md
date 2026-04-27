@@ -7,16 +7,19 @@ A GitHub dashboard inside Neovim. Needs the [gh CLI](https://cli.github.com) aut
 ```lua
 {
   "AlexanderInnerbichler/gh_dashboard.nvim",
-  cmd  = { "GhDashboard", "GhWatchlist" },
+  cmd  = { "GhDashboard", "GhWatchlist", "GhNotifications", "GhRepoPicker" },
   keys = {
-    { "<leader>gh", "<cmd>GhDashboard<cr>", desc = "GitHub Dashboard" },
-    { "<leader>gw", "<cmd>GhWatchlist<cr>",  desc = "GitHub Watchlist" },
+    { "<leader>gh", "<cmd>GhDashboard<cr>",     desc = "GitHub Dashboard" },
+    { "<leader>gw", "<cmd>GhWatchlist<cr>",     desc = "GitHub Watchlist" },
+    { "<leader>gn", "<cmd>GhNotifications<cr>", desc = "GitHub Notifications" },
+    { "<leader>gu", function() require("gh_dashboard.user_watchlist").toggle() end, desc = "GitHub User Watchlist" },
   },
   config = function()
     require("gh_dashboard").setup()
     require("gh_dashboard.reader").setup()
     require("gh_dashboard.watchlist").setup()
     require("gh_dashboard.user_watchlist").setup()
+    require("gh_dashboard.notifications").setup()
   end,
 }
 ```
@@ -28,23 +31,68 @@ require("gh_dashboard").setup({
   cache_ttl         = 300,  -- seconds before cache expires
   poll_interval     = 60,   -- seconds between watchlist polls
   notification_ttl  = 5,    -- seconds before toast dismisses
-  max_notifications = 3,
-  max_history       = 20,
-  window_width      = 0.9,
+  max_notifications = 3,    -- max simultaneous toasts
+  max_history       = 20,   -- max notification history entries
+  window_width      = 0.9,  -- window width as fraction of screen
   stale_pr_days     = 7,    -- PRs older than this get a [stale] tag
 })
 ```
 
-## Keys
+## Dashboard
+
+`:GhDashboard` (or `<leader>gh`) opens a floating window with:
+
+- **Profile** — name, followers, following, public repos, total contributions, unread notification count
+- **Contribution heatmap** — last 20 weeks, colour-coded by intensity; animated duck walks across it
+- **Pull Requests** — open PRs where you are author, assignee, or review-requested; tagged `[draft]`, `[review]`, `[stale]`
+- **Assigned Issues** — open issues assigned to you across all repos
+- **Activity Feed** — chronological events from your repo and user watchlists (your own activity filtered out)
+
+### Dashboard keys
 
 | Key | Action |
 |-----|--------|
-| `<leader>gh` | Dashboard |
+| `<CR>` / `o` | Open item under cursor (PR/issue reader, repo view, user profile, day activity, notifications) |
+| `d` | Diff view for PR under cursor |
+| `w` | Toggle repo watchlist for repo under cursor |
+| `s` | Fuzzy-search and open any of your repos |
+| `r` | Force refresh (clears cache) |
 | `<leader>gw` | Repo watchlist |
-| `<leader>gn` | Latest notification |
-| `<leader>gu` | User watchlist |
+| `<leader>gn` | Notifications panel |
+| `q` / `<Esc>` | Close |
 
-`:checkhealth gh_dashboard` to verify setup.
+## PR & Issue Reader
+
+`<CR>` on any PR or issue opens a detail view with the full description, comments, and metadata. On a PR you can also press `d` to open a split diff of all changed files.
+
+## Repo View
+
+`<CR>` on a heatmap day or a repo in the feed opens the repo view: stars, language, description, recent CI runs, and a rendered README preview.
+
+## User Profile
+
+`<CR>` on an activity feed event opens that user's profile: bio, stats, and their recent public activity.
+
+## Watchlists
+
+**Repo watchlist** (`:GhWatchlist` / `<leader>gw`) — add/remove repos to watch. Watched repos appear in the Activity Feed and trigger notification toasts when new events come in.
+
+**User watchlist** (`<leader>gu`) — add/remove GitHub users to watch. Their public events appear in the Activity Feed.
+
+## Notifications
+
+`:GhNotifications` / `<leader>gn` opens the full notification list. Unread count is shown in the dashboard header. Background polling fires toast notifications for new events on your watchlist.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `:GhDashboard` | Toggle dashboard |
+| `:GhWatchlist` | Toggle repo watchlist |
+| `:GhNotifications` | Toggle notifications panel |
+| `:GhRepoPicker` | Fuzzy-search and open a repo |
+| `:GhDebug` | Show internal debug info |
+| `:checkhealth gh_dashboard` | Verify setup |
 
 ---
 
