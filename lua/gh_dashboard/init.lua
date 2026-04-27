@@ -151,7 +151,19 @@ local function fetch_and_render()
       done(err ~= nil)
     end)
     fetch.activity_feed(function(err, events)
-      if err then state.data.feed_err = err else state.data.feed_events = events end
+      if err then
+        state.data.feed_err = err
+      else
+        if login and events then
+          local filtered = {}
+          for _, ev in ipairs(events) do
+            if ev.actor ~= login then table.insert(filtered, ev) end
+          end
+          state.data.feed_events = filtered
+        else
+          state.data.feed_events = events
+        end
+      end
       done(err ~= nil)
     end)
     if login then
