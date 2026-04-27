@@ -78,6 +78,7 @@ end
 function M.issues(callback)
   gh.run_with_retry(
     { "gh", "api", "/issues",
+      "--method", "GET",
       "--field", "filter=assigned",
       "--field", "state=open",
       "--field", "per_page=100",
