@@ -7,6 +7,7 @@ local HELP = {
     { key = "<CR> / o",    desc = "Open item under cursor" },
     { key = "d",           desc = "Open PR diff" },
     { key = "w",           desc = "Watch / unwatch repo" },
+    { key = "s",           desc = "Search all repos (fuzzy picker)" },
     { key = "r",           desc = "Refresh dashboard" },
     { key = "<leader>gw",  desc = "Open watchlist manager" },
     { key = "<leader>gn",  desc = "Open notifications" },
@@ -26,6 +27,14 @@ local HELP = {
   diff = {
     { key = "c (visual)",  desc = "Post inline review comment" },
     { key = "q / <Esc>",   desc = "Back" },
+    { key = "?",           desc = "Toggle this help" },
+  },
+  notifications = {
+    { key = "<CR> / o",    desc = "Open notification in reader" },
+    { key = "r",           desc = "Mark as read" },
+    { key = "R",           desc = "Refresh" },
+    { key = "a",           desc = "Toggle all / unread only" },
+    { key = "q / <Esc>",   desc = "Close" },
     { key = "?",           desc = "Toggle this help" },
   },
 }
@@ -74,7 +83,7 @@ local function open(context)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
 
-  local titles = { dashboard = "Dashboard Help", reader = "Reader Help", diff = "Diff Help" }
+  local titles = { dashboard = "Dashboard Help", reader = "Reader Help", diff = "Diff Help", notifications = "Notifications Help" }
   local win = vim.api.nvim_open_win(buf, true, {
     relative   = "editor",
     width      = win_w,

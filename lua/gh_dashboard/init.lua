@@ -73,11 +73,7 @@ local function apply_render()
   local win_width = state.win and vim.api.nvim_win_is_valid(state.win)
     and vim.api.nvim_win_get_width(state.win) or 120
 
-  local watched = {}
-  for _, entry in ipairs(require("gh_dashboard.watchlist").get_repos() or {}) do
-    watched[entry.owner .. "/" .. entry.repo] = true
-  end
-  local lines, hl_specs, items, hm_left_pad = render.build(data, state.is_loading, state.is_stale, win_width, watched)
+  local lines, hl_specs, items, hm_left_pad = render.build(data, state.is_loading, state.is_stale, win_width)
   state.items = items
 
   vim.bo[state.buf].modifiable = true
@@ -140,21 +136,17 @@ local function fetch_and_render()
   local login = state.data and state.data.profile and state.data.profile.login
 
   local function start_secondary_fetches()
-    pending = pending + 5
+    pending = pending + 4
+    fetch.notifications(function(err, count)
+      if not err then state.data.notif_count = count end
+      done(err ~= nil)
+    end)
     fetch.prs(function(err, prs)
       if err then state.data.prs_err = err else state.data.prs = prs end
       done(err ~= nil)
     end)
     fetch.issues(function(err, issues)
       if err then state.data.issues_err = err else state.data.issues = issues end
-      done(err ~= nil)
-    end)
-    fetch.repos(function(err, repos)
-      if err then state.data.repos_err = err else state.data.repos = repos end
-      done(err ~= nil)
-    end)
-    fetch.org_repos(function(err, org_repos)
-      if err then state.data.org_repos_err = err else state.data.org_repos = org_repos end
       done(err ~= nil)
     end)
     fetch.watched_users_activity(function(err, events)
@@ -292,6 +284,7 @@ local function open_win()
     state.is_stale = false
     fetch_and_render()
   end)
+  buf_map("s", function() require("gh_dashboard.repo_picker").open() end)
   require("gh_dashboard.help").setup_keymap(state.buf, "dashboard")
 
   vim.api.nvim_create_autocmd("CursorMoved", {

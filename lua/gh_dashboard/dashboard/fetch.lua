@@ -186,7 +186,7 @@ function M.org_repos(callback)
       local any_err
       for _, org in ipairs(orgs) do
         gh.run_with_retry(
-          { "gh", "repo", "list", org.login, "--limit", "10",
+          { "gh", "repo", "list", org.login, "--limit", "1000",
             "--json", "name,nameWithOwner,url,primaryLanguage,stargazerCount,isPrivate,pushedAt" },
           function(ferr, repos)
             if ferr then
@@ -214,6 +214,20 @@ function M.org_repos(callback)
           end
         )
       end
+    end
+  )
+end
+
+function M.notifications(callback)
+  gh.run_with_retry(
+    { "gh", "api", "/notifications" },
+    function(err, data)
+      if err then callback(err, nil) return end
+      local count = 0
+      for _, n in ipairs(data or {}) do
+        if n.unread then count = count + 1 end
+      end
+      callback(nil, count)
     end
   )
 end

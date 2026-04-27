@@ -62,6 +62,39 @@ end
 
 -- ── render ─────────────────────────────────────────────────────────────────
 
+local README_MAX = 20
+
+local function render_readme(lines, hl_specs, text, err)
+  table.insert(lines, "  README")
+  table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = 8 })
+
+  if err then
+    table.insert(lines, "  " .. sl(err))
+    table.insert(hl_specs, { hl = "GhError", line = #lines - 1, col_s = 0, col_e = -1 })
+  elseif not text then
+    table.insert(lines, "  No README")
+    table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = -1 })
+  else
+    local raw     = vim.split(text, "\n", { plain = true })
+    local start_i = 1
+    while start_i <= #raw and raw[start_i]:match("^%s*$") do start_i = start_i + 1 end
+    local shown = 0
+    for i = start_i, #raw do
+      if shown >= README_MAX then break end
+      table.insert(lines, "  " .. raw[i])
+      shown = shown + 1
+    end
+    local remaining = #raw - (start_i - 1) - shown
+    if remaining > 0 then
+      table.insert(lines, string.format("  ⋯  %d more lines", remaining))
+      table.insert(hl_specs, { hl = "GhMeta", line = #lines - 1, col_s = 0, col_e = -1 })
+    end
+  end
+
+  table.insert(lines, sep())
+  table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
+end
+
 local function render(data)
   local lines    = {}
   local hl_specs = {}
@@ -164,6 +197,51 @@ local function render(data)
     table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 0, col_e = -1 })
   end
 
+  table.insert(lines, sep())
+  table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
+
+  -- Workflow Runs section
+  local run_header = data.runs
+    and ("  Workflow Runs (" .. #data.runs .. ")")
+    or  "  Workflow Runs"
+  table.insert(lines, run_header)
+  table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #run_header })
+
+  if data.runs_err then
+    local msg = "  ✗ " .. sl(data.runs_err)
+    table.insert(lines, msg)
+    table.insert(hl_specs, { hl = "GhError", line = #lines - 1, col_s = 0, col_e = #msg })
+  elseif not data.runs or #data.runs == 0 then
+    local msg = "   No workflow runs"
+    table.insert(lines, msg)
+    table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
+  else
+    for _, run in ipairs(data.runs) do
+      local c    = run.conclusion
+      local icon, hl_icon
+      if c == "success" then
+        icon, hl_icon = "✓", "GhCiPass"
+      elseif c == "failure" or c == "action_required" then
+        icon, hl_icon = "✗", "GhCiFail"
+      else
+        icon, hl_icon = "⠋", "GhCiPending"
+      end
+      local age  = age_string(run.updated_at)
+      local ev   = sl(run.event or "")
+      local br   = trunc(run.head_branch or "", 20)
+      local name = trunc(run.name or "", 20)
+      local line = string.format("   %s  %-20s  %-12s → %-20s  %s",
+        icon, name, ev, br, age)
+      table.insert(items, { line = #lines, kind = "run", run_id = run.id, repo = repo,
+        run_name = run.name, conclusion = c })
+      table.insert(lines, line)
+      local ln = #lines - 1
+      table.insert(hl_specs, { hl = hl_icon, line = ln, col_s = 3, col_e = 3 + #icon })
+      table.insert(hl_specs, { hl = "GhMeta", line = ln, col_s = 3 + #icon + 2 + 20 + 2 + 12 + 3 + 20 + 2, col_e = -1 })
+    end
+  end
+
+  render_readme(lines, hl_specs, data.readme, data.readme_err)
   table.insert(lines, "")
 
   state.items = items
@@ -175,7 +253,7 @@ end
 local function fetch_and_render()
   local full_name = state.item.full_name
   local data      = {}
-  local pending   = 3
+  local pending   = 5
 
   local function done()
     pending = pending - 1
@@ -211,6 +289,38 @@ local function fetch_and_render()
     function(err, branches)
       if err then data.branches_err = err else data.branches = branches end
       done()
+    end
+  )
+  gh.run(
+    { "gh", "api", "repos/" .. full_name .. "/actions/runs",
+      "--jq", "[.workflow_runs[:10] | .[] | {id,name,status,conclusion,head_branch,event,updated_at}]" },
+    function(err, runs)
+      if err then data.runs_err = err else data.runs = runs end
+      done()
+    end
+  )
+  vim.system(
+    { "gh", "api", "repos/" .. full_name .. "/readme" },
+    { text = true },
+    function(result)
+      vim.schedule(function()
+        if result.code ~= 0 then
+          data.readme_err = "no README"
+          done()
+          return
+        end
+        local ok, resp = pcall(vim.fn.json_decode, result.stdout)
+        if not ok or type(resp) ~= "table" or not resp.content then
+          data.readme_err = "no README"
+          done()
+          return
+        end
+        local clean = resp.content:gsub("[^A-Za-z0-9+/=]", "")
+        local ok2, text = pcall(vim.base64.decode, clean)
+        data.readme = ok2 and text or nil
+        if not ok2 then data.readme_err = "decode error" end
+        done()
+      end)
     end
   )
 end
@@ -354,7 +464,11 @@ local function open_win()
     local cur = vim.api.nvim_win_get_cursor(state.win)[1] - 1
     for _, item in ipairs(state.items) do
       if item.line == cur then
-        require("gh_dashboard.reader").open(item)
+        if item.kind == "run" then
+          require("gh_dashboard.run_view").open(item)
+        else
+          require("gh_dashboard.reader").open(item)
+        end
         return
       end
     end

@@ -49,7 +49,7 @@ end
 
 -- ── section renderers ──────────────────────────────────────────────────────
 
-local function render_profile(lines, hl_specs, profile, total_contrib, win_width, is_loading, is_stale)
+local function render_profile(lines, hl_specs, profile, total_contrib, win_width, is_loading, is_stale, notif_count)
   local loading_tag = is_loading and "  [loading…]" or ""
   local stale_tag   = is_stale   and "  [stale]"    or ""
   local login    = (profile and profile.login) or "GitHub"
@@ -70,13 +70,18 @@ local function render_profile(lines, hl_specs, profile, total_contrib, win_width
   end
 
   if profile then
+    local notif_str = (notif_count and notif_count > 0) and ("  🔔 " .. notif_count .. " unread") or ""
     local stats = string.format(
       "  👥 %d followers · %d following · %d repos · %d contributions",
       profile.followers or 0, profile.following or 0,
       profile.public_repos or 0, total_contrib or 0
-    )
+    ) .. notif_str
     table.insert(lines, stats)
-    table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 0, col_e = #stats })
+    local stats_base = #stats - #notif_str
+    table.insert(hl_specs, { hl = "GhStats",       line = #lines - 1, col_s = 0,          col_e = stats_base })
+    if notif_str ~= "" then
+      table.insert(hl_specs, { hl = "GhNotifUnread", line = #lines - 1, col_s = stats_base, col_e = #stats })
+    end
     if profile.bio and profile.bio ~= "" and profile.bio ~= vim.NIL then
       local bio = "  " .. profile.bio
       table.insert(lines, bio)
@@ -185,71 +190,26 @@ local function render_issues(lines, hl_specs, items, issues, err, win_width)
   table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
 end
 
-local function render_repos(lines, hl_specs, items, repos, err, watched)
-  local count  = (not err and repos) and #repos or nil
-  local header = count ~= nil and ("  Repositories (" .. count .. ")") or "  Repositories"
+local function render_watched_repos(lines, hl_specs, items, win_width)
+  local repos = require("gh_dashboard.watchlist").get_repos() or {}
+  if #repos == 0 then return end
+
+  local header = "  Watched Repos (" .. #repos .. ")"
   table.insert(lines, header)
   table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
 
-  if err then
-    local msg = "  ✗ " .. sl(err)
-    table.insert(lines, msg)
-    table.insert(hl_specs, { hl = "GhError", line = #lines - 1, col_s = 0, col_e = #msg })
-  elseif not repos or #repos == 0 then
-    local msg = "   No repositories"
-    table.insert(lines, msg)
-    table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
-  else
-    for _, repo in ipairs(repos) do
-      local is_watched = watched and watched[repo.full_name]
-      local prefix = is_watched and "●  " or "   "
-      local lock = repo.is_private and "🔒" or " ⊙"
-      local lang = sl(repo.language) ~= "" and sl(repo.language) or "—"
-      local age  = age_string(repo.updated_at)
-      local line = string.format("%s%s  %-30s  %-10s  ★%-3d  %s",
-        prefix, lock, trunc(repo.name, 30), lang:sub(1, 10), repo.stars, age)
-      table.insert(items, { line = #lines, url = repo.url, full_name = repo.full_name, kind = "repo" })
-      table.insert(lines, line)
-      local ln = #lines - 1
-      table.insert(hl_specs, { hl = "GhItem", line = ln, col_s = 0, col_e = 35 })
-      table.insert(hl_specs, { hl = "GhMeta", line = ln, col_s = 45, col_e = -1 })
-      if is_watched then
-        table.insert(hl_specs, { hl = "GhWatchIndicator", line = ln, col_s = 0, col_e = 3 })
-      end
-    end
+  for _, entry in ipairs(repos) do
+    local full_name = entry.owner .. "/" .. entry.repo
+    local line = "   ● " .. full_name
+    table.insert(items, { line = #lines, kind = "repo", full_name = full_name })
+    table.insert(lines, line)
+    local ln = #lines - 1
+    table.insert(hl_specs, { hl = "GhWatchIndicator", line = ln, col_s = 3, col_e = 4 })
+    table.insert(hl_specs, { hl = "GhItem",           line = ln, col_s = 5, col_e = -1 })
   end
-end
 
-local function render_org_repos(lines, hl_specs, items, org_repos, err, watched)
-  if not err and (not org_repos or #org_repos == 0) then return end
-
-  local header = "  Organization Repositories"
-  table.insert(lines, header)
-  table.insert(hl_specs, { hl = "GhSection", line = #lines - 1, col_s = 0, col_e = #header })
-
-  if err then
-    local msg = "  ✗ " .. sl(err)
-    table.insert(lines, msg)
-    table.insert(hl_specs, { hl = "GhError", line = #lines - 1, col_s = 0, col_e = #msg })
-  else
-    for _, repo in ipairs(org_repos) do
-      local is_watched = watched and watched[repo.full_name]
-      local prefix = is_watched and "●  " or "   "
-      local lock = repo.is_private and "🔒" or " ⊙"
-      local lang = sl(repo.language) ~= "" and sl(repo.language) or "—"
-      local age  = age_string(repo.updated_at)
-      local line = string.format("%s%s  %-30s  %-10s  ★%-3d  %s",
-        prefix, lock, trunc(repo.name, 30), lang:sub(1, 10), repo.stars, age)
-      table.insert(items, { line = #lines, url = repo.url, full_name = repo.full_name, kind = "repo" })
-      table.insert(lines, line)
-      local ln = #lines - 1
-      table.insert(hl_specs, { hl = "GhItem", line = ln, col_s = 0, col_e = 35 })
-      table.insert(hl_specs, { hl = "GhMeta", line = ln, col_s = 45, col_e = -1 })
-      if is_watched then
-        table.insert(hl_specs, { hl = "GhWatchIndicator", line = ln, col_s = 0, col_e = 3 })
-      end
-    end
-  end
+  table.insert(lines, separator(win_width))
+  table.insert(hl_specs, { hl = "GhSeparator", line = #lines - 1, col_s = 0, col_e = -1 })
 end
 
 local function render_watched_users(lines, hl_specs, items, events, err)
@@ -319,7 +279,7 @@ end
 
 --- Build display content for the dashboard.
 --- Returns lines, hl_specs, items tables ready for writing to a buffer.
-function M.build(data, is_loading, is_stale, win_width, watched)
+function M.build(data, is_loading, is_stale, win_width)
   local lines    = {}
   local hl_specs = {}
   local items    = {}
@@ -327,13 +287,12 @@ function M.build(data, is_loading, is_stale, win_width, watched)
   table.insert(lines, "")  -- top padding
 
   render_profile(lines, hl_specs, data.profile, data.contributions and data.contributions.total,
-    win_width, is_loading, is_stale)
+    win_width, is_loading, is_stale, data.notif_count)
   local login = data.profile and data.profile.login
   local hm_left_pad = heatmap.render_heatmap(lines, hl_specs, data.contributions, items, login, win_width)
   render_prs(lines, hl_specs, items, data.prs, data.prs_err, win_width)
   render_issues(lines, hl_specs, items, data.issues, data.issues_err, win_width)
-  render_repos(lines, hl_specs, items, data.repos, data.repos_err, watched)
-  render_org_repos(lines, hl_specs, items, data.org_repos, data.org_repos_err, watched)
+  render_watched_repos(lines, hl_specs, items, win_width)
   render_watched_users(lines, hl_specs, items, data.watched_events, data.watched_events_err)
 
   return lines, hl_specs, items, hm_left_pad or 0
