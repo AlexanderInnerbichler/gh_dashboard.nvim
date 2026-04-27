@@ -77,8 +77,11 @@ end
 
 function M.issues(callback)
   gh.run_with_retry(
-    { "gh", "search", "issues", "--assignee", "@me", "--state", "open",
-      "--json", "number,title,repository,url,createdAt" },
+    { "gh", "api", "/issues",
+      "--field", "filter=assigned",
+      "--field", "state=open",
+      "--field", "per_page=100",
+      "--jq", '[.[] | select(.pull_request == null) | {number, title, url: .html_url, created_at, repo: (.repository_url | ltrimstr("https://api.github.com/repos/"))}]' },
     function(err, data)
       if err then callback(err, nil) return end
       local issues = {}
@@ -86,9 +89,9 @@ function M.issues(callback)
         table.insert(issues, {
           number     = iss.number,
           title      = iss.title,
-          repo       = type(iss.repository) == "table" and iss.repository.nameWithOwner or repo_from_url(iss.url),
+          repo       = iss.repo or repo_from_url(iss.url or ""),
           url        = iss.url,
-          created_at = iss.createdAt,
+          created_at = iss.created_at,
         })
       end
       callback(nil, issues)
