@@ -20,6 +20,7 @@ local state = {
   history      = {},   -- list of { _repo, _ev } newest-first
   manager_buf  = nil,
   manager_win  = nil,
+  manager_meta = {},   -- keyed "owner/repo" → {description, language, stars, is_private, pushed_at}
 }
 
 -- ── namespace ──────────────────────────────────────────────────────────────
@@ -345,21 +346,78 @@ local function render_manager()
   local lines    = {}
   local hl_specs = {}
 
+  -- breadcrumb
+  local crumb_prefix = "  GitHub Dashboard  ›  "
+  local crumb_title  = "Watched Repos"
+  local crumb        = crumb_prefix .. crumb_title
+  table.insert(lines, crumb)
+  table.insert(hl_specs, { hl = "GhReaderBreadcrumb", line = #lines - 1, col_s = 0,              col_e = #crumb_prefix })
+  table.insert(hl_specs, { hl = "GhReaderTitle",      line = #lines - 1, col_s = #crumb_prefix,  col_e = #crumb })
   table.insert(lines, "")
+
   if #state.repos == 0 then
     local msg = "   No repos watched. Press 'a' to add one."
     table.insert(lines, msg)
     table.insert(hl_specs, { hl = "GhWatchEmpty", line = #lines - 1, col_s = 0, col_e = -1 })
   else
     for _, entry in ipairs(state.repos) do
-      local line = "   " .. entry.owner .. "/" .. entry.repo
-      table.insert(lines, line)
-      table.insert(hl_specs, { hl = "GhWatchRepo", line = #lines - 1, col_s = 3, col_e = -1 })
+      local key  = entry.owner .. "/" .. entry.repo
+      local meta = state.manager_meta[key]
+      local full = key
+
+      if meta then
+        local lang  = (type(meta.language) == "string" and meta.language ~= "" and meta.language) or "—"
+        local stars = type(meta.stars) == "number" and meta.stars or 0
+        local desc  = (type(meta.description) == "string" and meta.description ~= ""
+                      and meta.description ~= vim.NIL and meta.description) or ""
+        if meta.is_private == true then desc = (desc ~= "" and "🔒 " .. desc or "🔒") end
+        local age  = (type(meta.pushed_at) == "string") and time_ago(meta.pushed_at) or ""
+        local line = string.format("  ●  %-32s  %-12s  ★%-5d  %-36s  %s",
+          full:sub(1, 32), lang:sub(1, 12), stars, desc:sub(1, 36), age)
+        table.insert(lines, line)
+        local ln       = #lines - 1
+        local dot_col  = 2
+        local name_col = 5
+        local lang_col = name_col + 32 + 2
+        local star_col = lang_col + 12 + 2
+        local desc_col = star_col + 7
+        local age_col  = desc_col + 36 + 2
+        table.insert(hl_specs, { hl = "GhWatchIndicator", line = ln, col_s = dot_col,  col_e = dot_col + 1 })
+        table.insert(hl_specs, { hl = "GhItem",           line = ln, col_s = name_col, col_e = name_col + 32 })
+        table.insert(hl_specs, { hl = "GhStats",          line = ln, col_s = lang_col, col_e = star_col + 7 })
+        table.insert(hl_specs, { hl = "GhMeta",           line = ln, col_s = age_col,  col_e = -1 })
+      else
+        -- metadata still loading
+        local line = string.format("  ●  %-32s  …", full:sub(1, 32))
+        table.insert(lines, line)
+        local ln = #lines - 1
+        table.insert(hl_specs, { hl = "GhWatchIndicator", line = ln, col_s = 2, col_e = 3 })
+        table.insert(hl_specs, { hl = "GhItem",           line = ln, col_s = 5, col_e = 5 + 32 })
+        table.insert(hl_specs, { hl = "GhStats",          line = ln, col_s = 5 + 32 + 2, col_e = -1 })
+      end
     end
   end
-  table.insert(lines, "")
 
+  table.insert(lines, "")
   write_buf(state.manager_buf, lines, hl_specs)
+end
+
+local function fetch_manager_meta()
+  for _, entry in ipairs(state.repos) do
+    local key = entry.owner .. "/" .. entry.repo
+    if not state.manager_meta[key] then
+      gh.run_with_retry(
+        { "gh", "api", "repos/" .. key,
+          "--jq", "{description:.description,language:.language,stars:.stargazers_count,is_private:.private,pushed_at:.pushed_at}" },
+        function(err, data)
+          if not err and data then
+            state.manager_meta[key] = data
+            render_manager()
+          end
+        end
+      )
+    end
+  end
 end
 
 local function close_manager()
@@ -429,6 +487,7 @@ local function open_add_input()
     table.insert(state.repos, { owner = owner, repo = repo, last_seen_id = "" })
     save_watchlist()
     render_manager()
+    fetch_manager_meta()
     -- move cursor to newly added entry
     if state.manager_win and vim.api.nvim_win_is_valid(state.manager_win) then
       local lines = vim.api.nvim_buf_get_lines(state.manager_buf, 0, -1, false)
@@ -453,11 +512,12 @@ local function remove_at_cursor()
   if not state.manager_win or not vim.api.nvim_win_is_valid(state.manager_win) then return end
   if #state.repos == 0 then return end
   local cur = vim.api.nvim_win_get_cursor(state.manager_win)[1]
-  -- line 1 = "", line 2 = first repo (if any), etc.
-  local idx = cur - 1  -- accounts for leading empty line
+  -- line 1 = breadcrumb, line 2 = "", line 3 = first repo, etc.
+  local idx = cur - 2
   if idx < 1 or idx > #state.repos then return end
   local removed = state.repos[idx]
   table.remove(state.repos, idx)
+  state.manager_meta[removed.owner .. "/" .. removed.repo] = nil
   save_watchlist()
   render_manager()
   vim.notify("Removed " .. removed.owner .. "/" .. removed.repo, vim.log.levels.INFO)
@@ -467,7 +527,7 @@ local function open_repo_at_cursor()
   if not state.manager_win or not vim.api.nvim_win_is_valid(state.manager_win) then return end
   if #state.repos == 0 then return end
   local cur = vim.api.nvim_win_get_cursor(state.manager_win)[1]
-  local idx = cur - 1
+  local idx = cur - 2
   if idx < 1 or idx > #state.repos then return end
   local entry = state.repos[idx]
   require("gh_dashboard.repo_view").open({
@@ -491,8 +551,8 @@ local function open_manager()
   end
 
   local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.70)
-  local height = math.floor(ui.height * 0.50)
+  local width  = math.floor(ui.width  * 0.90)
+  local height = math.floor(ui.height * 0.90)
   local row    = math.floor((ui.height - height) / 2)
   local col    = math.floor((ui.width  - width)  / 2)
 
@@ -516,6 +576,7 @@ local function open_manager()
   vim.wo[state.manager_win].foldenable     = false
 
   render_manager()
+  fetch_manager_meta()
 
   local function bmap(lhs, fn)
     vim.keymap.set("n", lhs, fn, { buffer = state.manager_buf, nowait = true, silent = true })
@@ -530,8 +591,9 @@ local function open_manager()
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer = state.manager_buf, once = true,
     callback = function()
-      state.manager_buf = nil
-      state.manager_win = nil
+      state.manager_buf  = nil
+      state.manager_win  = nil
+      state.manager_meta = {}
     end,
   })
 end
