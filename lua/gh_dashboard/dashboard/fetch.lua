@@ -236,7 +236,7 @@ function M.notifications(callback)
   )
 end
 
-function M.activity_feed(callback)
+function M.activity_feed(callback, own_login)
   local users = require("gh_dashboard.user_watchlist").get_users()
   local repos = require("gh_dashboard.watchlist").get_repos()
   local total = #users + #repos
@@ -254,7 +254,12 @@ function M.activity_feed(callback)
 
   local function collect(err, events)
     if err then last_err = err
-    else for _, ev in ipairs(events or {}) do table.insert(all_events, ev) end
+    else
+      for _, ev in ipairs(events or {}) do
+        if own_login == nil or ev.actor ~= own_login then
+          table.insert(all_events, ev)
+        end
+      end
     end
     pending = pending - 1
     if pending == 0 then

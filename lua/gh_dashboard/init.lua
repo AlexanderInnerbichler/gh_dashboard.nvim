@@ -165,7 +165,7 @@ local function fetch_and_render()
         end
       end
       done(err ~= nil)
-    end)
+    end, login)
     if login then
       pending = pending + 1
       fetch.contributions(function(err, contrib)
