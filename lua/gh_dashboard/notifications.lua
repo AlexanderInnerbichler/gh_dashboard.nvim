@@ -270,7 +270,7 @@ local function open_win()
     if item.kind and item.number and item.repo then
       require("gh_dashboard.reader").open({ kind = item.kind, number = item.number, repo = item.repo })
     elseif item.repo then
-      vim.system({ "xdg-open", "https://github.com/" .. item.repo })
+      require("gh_dashboard.repo_view").open({ kind = "repo", full_name = item.repo })
     end
   end
 

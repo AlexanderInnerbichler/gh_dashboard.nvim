@@ -259,56 +259,99 @@ function M.render_pr(data, review_comments)
   table.insert(hl_specs, { hl = state_hl(data.state), line = #lines - 1, col_s = 2, col_e = 2 + #state_tag })
   table.insert(hl_specs, { hl = "GhReaderMeta",       line = #lines - 1, col_s = 2 + #state_tag, col_e = -1 })
 
-  local mergeable_icon = data.mergeable == "MERGEABLE" and "✓" or (data.mergeable == "CONFLICTING" and "✗" or "?")
-  local branch_line    = "  ⎇  " .. sl(data.head_ref) .. " → " .. sl(data.base_ref) .. "   merge: " .. mergeable_icon
-  table.insert(lines, branch_line)
-  table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = 0, col_e = -1 })
+  -- ── Merge Readiness ───────────────────────────────────────────────────────
+  local MR_W   = 10
+  local mr_hdr = "  ── Merge Readiness " .. string.rep("─", CODE_WIDTH - 17)
+  table.insert(lines, mr_hdr)
+  table.insert(hl_specs, { hl = "GhReaderSection", line = #lines - 1, col_s = 0, col_e = -1 })
 
-  if #data.ci_checks > 0 then
-    local parts  = { "  CI: " }
-    local ci_hls = {}
-    local col    = #"  CI: "
-    for _, check in ipairs(data.ci_checks) do
-      local s    = safe_str(check.status):upper()
-      local icon = (s == "SUCCESS" or s == "COMPLETED") and "✓" or (s == "FAILURE" or s == "ERROR") and "✗" or "⠋"
-      local hl   = (icon == "✓") and "GhCiPass" or (icon == "✗") and "GhCiFail" or "GhCiPending"
-      local chunk = icon .. " " .. sl(check.name) .. "  "
-      table.insert(ci_hls, { hl = hl, col_s = col, col_e = col + #icon })
-      col = col + #chunk
-      table.insert(parts, chunk)
+  -- CI row
+  do
+    local label = "  " .. string.format("%-" .. MR_W .. "s", "CI")
+    local parts = { label }
+    local hls   = {}
+    local col   = #label
+    if #data.ci_checks == 0 then
+      table.insert(parts, "—")
+    else
+      for i, check in ipairs(data.ci_checks) do
+        local s    = safe_str(check.status):upper()
+        local icon = (s == "SUCCESS" or s == "COMPLETED") and "✓" or (s == "FAILURE" or s == "ERROR") and "✗" or "⠋"
+        local hl_n = (icon == "✓") and "GhCiPass" or (icon == "✗") and "GhCiFail" or "GhCiPending"
+        local sep  = i < #data.ci_checks and "  " or ""
+        local chunk = icon .. " " .. sl(check.name) .. sep
+        table.insert(hls, { hl = hl_n, col_s = col, col_e = col + #icon })
+        col = col + #chunk
+        table.insert(parts, chunk)
+      end
     end
     local ci_line = table.concat(parts)
     table.insert(lines, ci_line)
     local ln = #lines - 1
-    for _, h in ipairs(ci_hls) do
+    for _, h in ipairs(hls) do
       table.insert(hl_specs, { hl = h.hl, line = ln, col_s = h.col_s, col_e = h.col_e })
     end
-  else
-    table.insert(lines, "  CI: no checks")
-    table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = 0, col_e = -1 })
   end
 
-  if #data.reviews > 0 then
-    local parts   = { "  Reviews: " }
-    local rev_hls = {}
-    local col     = #"  Reviews: "
-    for _, r in ipairs(data.reviews) do
-      local icon  = r.state == "APPROVED" and "✓" or (r.state == "CHANGES_REQUESTED" and "✗" or "·")
-      local hl    = r.state == "APPROVED" and "GhReviewApproved" or (r.state == "CHANGES_REQUESTED" and "GhReviewChanges" or "GhReviewComment")
-      local chunk = icon .. " " .. sl(r.author) .. "  "
-      table.insert(rev_hls, { hl = hl, col_s = col, col_e = col + #icon })
-      col = col + #chunk
-      table.insert(parts, chunk)
+  -- Reviews row
+  do
+    local label = "  " .. string.format("%-" .. MR_W .. "s", "Reviews")
+    if data.is_draft then
+      table.insert(lines, label .. "[draft — not ready for review]")
+      table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = 0, col_e = -1 })
+    elseif #data.reviews == 0 then
+      table.insert(lines, label .. "—")
+      table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = 0, col_e = -1 })
+    else
+      local approved, changes, commented = 0, 0, 0
+      for _, r in ipairs(data.reviews) do
+        if     r.state == "APPROVED"          then approved  = approved  + 1
+        elseif r.state == "CHANGES_REQUESTED" then changes   = changes   + 1
+        else                                       commented = commented + 1
+        end
+      end
+      local parts = { label }
+      local hls   = {}
+      local col   = #label
+      local function add_chunk(icon, text, hl_n)
+        local chunk = icon .. " " .. text .. "  "
+        table.insert(hls, { hl = hl_n, col_s = col, col_e = col + #icon })
+        col = col + #chunk
+        table.insert(parts, chunk)
+      end
+      if approved  > 0 then add_chunk("✓", approved  .. " approved",          "GhReviewApproved") end
+      if changes   > 0 then add_chunk("✗", changes   .. " changes requested", "GhReviewChanges")  end
+      if commented > 0 then add_chunk("·", commented .. " comments",           "GhReviewComment")  end
+      if #parts == 1   then table.insert(parts, "—") end
+      local rev_line = table.concat(parts)
+      table.insert(lines, rev_line)
+      local ln = #lines - 1
+      for _, h in ipairs(hls) do
+        table.insert(hl_specs, { hl = h.hl, line = ln, col_s = h.col_s, col_e = h.col_e })
+      end
     end
-    local rev_line = table.concat(parts)
-    table.insert(lines, rev_line)
+  end
+
+  -- Mergeable row
+  do
+    local label = "  " .. string.format("%-" .. MR_W .. "s", "Mergeable")
+    local icon, text, hl_n
+    if     data.mergeable == "MERGEABLE"   then icon, text, hl_n = "✓", " no conflicts", "GhCiPass"
+    elseif data.mergeable == "CONFLICTING" then icon, text, hl_n = "✗", " conflicts",    "GhCiFail"
+    else                                        icon, text, hl_n = "?", " unknown",       "GhCiPending"
+    end
+    local mg_line = label .. icon .. text
+    table.insert(lines, mg_line)
     local ln = #lines - 1
-    for _, h in ipairs(rev_hls) do
-      table.insert(hl_specs, { hl = h.hl, line = ln, col_s = h.col_s, col_e = h.col_e })
-    end
-  else
-    table.insert(lines, "  Reviews: none")
-    table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = 0, col_e = -1 })
+    table.insert(hl_specs, { hl = hl_n,          line = ln, col_s = #label,          col_e = #label + #icon })
+    table.insert(hl_specs, { hl = "GhReaderMeta", line = ln, col_s = #label + #icon, col_e = -1             })
+  end
+
+  -- Base row
+  do
+    local label = "  " .. string.format("%-" .. MR_W .. "s", "Base")
+    table.insert(lines, label .. sl(data.base_ref) .. " ← " .. sl(data.head_ref))
+    table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = #label, col_e = -1 })
   end
 
   table.insert(lines, separator())
