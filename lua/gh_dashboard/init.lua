@@ -288,9 +288,10 @@ local function open_win()
     state.is_stale = false
     fetch_and_render()
   end)
-  buf_map("s",           function() require("gh_dashboard.repo_picker").open() end)
-  buf_map("<leader>gw", function() require("gh_dashboard.watchlist").toggle() end)
-  buf_map("<leader>gn", function() require("gh_dashboard.notifications").toggle() end)
+  buf_map("s",            function() require("gh_dashboard.repo_picker").open() end)
+  buf_map("<leader>gw",  function() require("gh_dashboard.watchlist").toggle() end)
+  buf_map("<leader>gn",  function() require("gh_dashboard.notifications").toggle() end)
+  buf_map("<leader>gd",  function() require("gh_dashboard.duck").debug_win() end)
   require("gh_dashboard.help").setup_keymap(state.buf, "dashboard")
 
   local last_cursor_line = -1
