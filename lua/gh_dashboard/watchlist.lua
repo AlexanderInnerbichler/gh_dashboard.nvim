@@ -2,6 +2,7 @@ local M = {}
 local config     = require("gh_dashboard.config")
 local gh         = require("gh_dashboard.gh")
 local highlights = require("gh_dashboard.highlights")
+local utils      = require("gh_dashboard.utils")
 
 -- ── constants ──────────────────────────────────────────────────────────────
 
@@ -13,14 +14,14 @@ local POLL_DELAY_MS  = 5000
 -- ── state ──────────────────────────────────────────────────────────────────
 
 local state = {
-  repos        = {},   -- list of { owner, repo, last_seen_id }
+  repos        = {},
   poll_timer   = nil,
   polling      = false,
-  notifs       = {},   -- list of { win, buf, timer, _repo, _ev }
-  history      = {},   -- list of { _repo, _ev } newest-first
+  notifs       = {},
+  history      = {},
   manager_buf  = nil,
   manager_win  = nil,
-  manager_meta = {},   -- keyed "owner/repo" → {description, language, stars, is_private, pushed_at}
+  manager_meta = {},
 }
 
 -- ── namespace ──────────────────────────────────────────────────────────────
@@ -36,7 +37,6 @@ local function load_watchlist()
   local ok, data = pcall(vim.fn.json_decode, table.concat(lines, "\n"))
   if ok and type(data) == "table" and type(data.repos) == "table" then
     state.repos = data.repos
-    -- migrate legacy last_seen_id → seen_ids
     for _, entry in ipairs(state.repos) do
       if entry.last_seen_id and not entry.seen_ids then
         entry.seen_ids    = { tostring(entry.last_seen_id) }
@@ -56,15 +56,7 @@ end
 -- ── buffer helper ──────────────────────────────────────────────────────────
 
 local function write_buf(buf, lines, hl_specs)
-  if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    vim.api.nvim_buf_add_highlight(buf, ns, spec.hl, spec.line,
-      spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
-  end
+  utils.write_buf(buf, ns, lines, hl_specs)
 end
 
 -- ── notification HUD ──────────────────────────────────────────────────────
@@ -119,19 +111,6 @@ local EVENT_ICONS = {
 }
 local DEFAULT_EVENT_ICON = "󰋙 "
 
-local function time_ago(iso)
-  if not iso then return "" end
-  local y, mo, d, h, mi, s = iso:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-  if not y then return "" end
-  local t    = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
-                         hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
-  local u    = os.date("!*t", t)  u.isdst = nil
-  local diff = os.time() - (t + os.difftime(t, os.time(u)))
-  if diff < 3600   then return math.floor(diff / 60)   .. "m ago"
-  elseif diff < 86400 then return math.floor(diff / 3600) .. "h ago"
-  else                  return math.floor(diff / 86400) .. "d ago" end
-end
-
 local function event_detail(ev)
   local p = ev.payload or {}
   if ev.type == "PullRequestEvent" then
@@ -158,7 +137,6 @@ end
 local function show_notification(repo, ev)
   local ui  = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
 
-  -- evict oldest if at cap
   if #state.notifs >= config.get().max_notifications then
     local oldest = table.remove(state.notifs, 1)
     if oldest.timer then oldest.timer:stop() oldest.timer:close() end
@@ -172,7 +150,7 @@ local function show_notification(repo, ev)
   local col    = ui.width - NOTIF_WIDTH - 2
   local icon   = EVENT_ICONS[ev.type] or DEFAULT_EVENT_ICON
   local label  = event_label(ev)
-  local age    = time_ago(ev.created_at)
+  local age    = utils.age_string(ev.created_at)
   local detail = event_detail(ev)
 
   local max_detail = NOTIF_WIDTH - 4
@@ -233,7 +211,6 @@ local function show_notification(repo, ev)
 
   table.insert(state.notifs, { win = win, buf = buf, timer = t, _repo = repo, _ev = ev })
 
-  -- keep a history so open_latest works after the popup auto-dismisses
   table.insert(state.history, 1, { _repo = repo, _ev = ev })
   if #state.history > config.get().max_history then table.remove(state.history) end
 end
@@ -275,7 +252,7 @@ local function poll_repo(entry, on_done)
     function(err, events)
       if not (err or not events or type(events) ~= "table" or #events == 0) then
         local new_events  = {}
-        local notif_items = {}  -- dedup: one notification per issue/PR per poll
+        local notif_items = {}
         for _, ev in ipairs(events) do
           local ev_id = tostring(ev.id)
           if is_new(entry, ev_id) then
@@ -346,7 +323,6 @@ local function render_manager()
   local lines    = {}
   local hl_specs = {}
 
-  -- breadcrumb
   local crumb_prefix = "  GitHub Dashboard  ›  "
   local crumb_title  = "Watched Repos"
   local crumb        = crumb_prefix .. crumb_title
@@ -371,7 +347,7 @@ local function render_manager()
         local desc  = (type(meta.description) == "string" and meta.description ~= ""
                       and meta.description ~= vim.NIL and meta.description) or ""
         if meta.is_private == true then desc = (desc ~= "" and "🔒 " .. desc or "🔒") end
-        local age  = (type(meta.pushed_at) == "string") and time_ago(meta.pushed_at) or ""
+        local age  = (type(meta.pushed_at) == "string") and utils.age_string(meta.pushed_at) or ""
         local line = string.format("  ●  %-32s  %-12s  ★%-5d  %-36s  %s",
           full:sub(1, 32), lang:sub(1, 12), stars, desc:sub(1, 36), age)
         table.insert(lines, line)
@@ -387,7 +363,6 @@ local function render_manager()
         table.insert(hl_specs, { hl = "GhStats",          line = ln, col_s = lang_col, col_e = star_col + 7 })
         table.insert(hl_specs, { hl = "GhMeta",           line = ln, col_s = age_col,  col_e = -1 })
       else
-        -- metadata still loading
         local line = string.format("  ●  %-32s  …", full:sub(1, 32))
         table.insert(lines, line)
         local ln = #lines - 1
@@ -477,7 +452,6 @@ local function open_add_input()
       vim.notify("Invalid format — use owner/repo", vim.log.levels.WARN)
       return
     end
-    -- check for duplicate
     for _, e in ipairs(state.repos) do
       if e.owner == owner and e.repo == repo then
         vim.notify(text .. " is already on the watchlist", vim.log.levels.INFO)
@@ -488,7 +462,6 @@ local function open_add_input()
     save_watchlist()
     render_manager()
     fetch_manager_meta()
-    -- move cursor to newly added entry
     if state.manager_win and vim.api.nvim_win_is_valid(state.manager_win) then
       local lines = vim.api.nvim_buf_get_lines(state.manager_buf, 0, -1, false)
       vim.api.nvim_win_set_cursor(state.manager_win, { math.max(1, #lines - 1), 0 })
@@ -512,7 +485,6 @@ local function remove_at_cursor()
   if not state.manager_win or not vim.api.nvim_win_is_valid(state.manager_win) then return end
   if #state.repos == 0 then return end
   local cur = vim.api.nvim_win_get_cursor(state.manager_win)[1]
-  -- line 1 = breadcrumb, line 2 = "", line 3 = first repo, etc.
   local idx = cur - 2
   if idx < 1 or idx > #state.repos then return end
   local removed = state.repos[idx]
@@ -600,7 +572,8 @@ end
 
 -- ── jump to activity ──────────────────────────────────────────────────────
 
-local function open_event(repo, ev)
+-- forward declared here, used in show_notification keymaps above
+open_event = function(repo, ev)
   local p = ev.payload or {}
   if ev.type == "PullRequestEvent" then
     local num = type(p.pull_request) == "table" and p.pull_request.number or nil
@@ -621,7 +594,7 @@ local function open_event(repo, ev)
       return
     end
   end
-  vim.system({ "xdg-open", "https://github.com/" .. repo })
+  utils.open_url("https://github.com/" .. repo)
 end
 
 local function open_history_popup()
@@ -637,14 +610,14 @@ local function open_history_popup()
     local icon  = EVENT_ICONS[entry._ev.type] or DEFAULT_EVENT_ICON
     local label = event_label(entry._ev)
     local repo  = entry._repo
-    local age   = time_ago(entry._ev.created_at)
+    local age   = utils.age_string(entry._ev.created_at)
     local age_part = age ~= "" and ("  ·  " .. age) or ""
     local line  = "   " .. icon .. label .. "  ·  " .. repo .. age_part
     local ln         = #lines
     local icon_s     = 3
     local icon_e     = icon_s + #icon
     local label_e    = icon_e + #label
-    local repo_s     = label_e + 5  -- "  ·  "
+    local repo_s     = label_e + 5
     local repo_e     = repo_s + #repo
     local age_s      = repo_e + 5
     table.insert(lines, line)
@@ -691,7 +664,7 @@ local function open_history_popup()
 
   local function open_at_cursor()
     local cur = vim.api.nvim_win_get_cursor(win)[1]
-    local idx = cur - 1  -- offset for leading blank line
+    local idx = cur - 1
     if idx < 1 or idx > #state.history then return end
     if vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_win_close(win, false)
@@ -705,7 +678,6 @@ local function open_history_popup()
 end
 
 M.open_latest = function()
-  -- prefer a live popup: dismiss it and open directly
   local last = state.notifs[#state.notifs]
   if last then
     if last.timer then last.timer:stop() last.timer:close() end
@@ -716,7 +688,6 @@ M.open_latest = function()
     open_event(last._repo, last._ev)
     return
   end
-  -- fall back to browseable history
   if #state.history == 0 then
     vim.notify("No recent notifications", vim.log.levels.INFO)
     return
@@ -727,8 +698,6 @@ end
 M.get_repos = function()
   return state.repos
 end
-
--- ── public API — toggle_repo ─────────────────────────────────────────────
 
 M.toggle_repo = function(full_name)
   local owner, repo = full_name:match("^([^/]+)/([^/]+)$")
@@ -747,8 +716,6 @@ M.toggle_repo = function(full_name)
   seed_seen(entry)
   vim.notify("Added " .. full_name .. " to watchlist", vim.log.levels.INFO)
 end
-
--- ── public API ────────────────────────────────────────────────────────────
 
 M.toggle = function()
   if state.manager_win and vim.api.nvim_win_is_valid(state.manager_win) then

@@ -2,6 +2,7 @@ local M = {}
 local gh         = require("gh_dashboard.gh")
 local highlights = require("gh_dashboard.highlights")
 local actions    = require("gh_dashboard.reader.actions")
+local utils      = require("gh_dashboard.utils")
 
 -- ── state ──────────────────────────────────────────────────────────────────
 
@@ -18,29 +19,9 @@ local ns = vim.api.nvim_create_namespace("GhRepoView")
 
 -- ── helpers ────────────────────────────────────────────────────────────────
 
-local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
-
-local function trunc(s, n)
-  s = sl(s)
-  return #s > n and s:sub(1, n - 3) .. "…" or s
-end
-
-local function age_string(iso8601)
-  if not iso8601 then return "" end
-  local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-  if not y then return "" end
-  local t    = os.time({ year = y, month = mo, day = d, hour = h, min = mi, sec = s })
-  local u    = os.date("!*t", t)  u.isdst = nil
-  local diff = os.time() - (t + os.difftime(t, os.time(u)))
-  if     diff < 60       then return "just now"
-  elseif diff < 3600     then return math.floor(diff / 60)     .. "m ago"
-  elseif diff < 86400    then return math.floor(diff / 3600)   .. "h ago"
-  elseif diff < 604800   then return math.floor(diff / 86400)  .. "d ago"
-  elseif diff < 2592000  then return math.floor(diff / 604800) .. "w ago"
-  elseif diff < 31536000 then return math.floor(diff / 2592000) .. "mo ago"
-  else                        return math.floor(diff / 31536000) .. "y ago"
-  end
-end
+local sl         = utils.sl
+local trunc      = utils.trunc
+local age_string = utils.age_string
 
 local function sep()
   return "  " .. string.rep("─", 58)
@@ -49,15 +30,7 @@ end
 -- ── buffer I/O ─────────────────────────────────────────────────────────────
 
 local function write_buf(lines, hl_specs)
-  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
-  vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    vim.api.nvim_buf_add_highlight(state.buf, ns, spec.hl, spec.line, spec.col_s,
-      spec.col_e == -1 and -1 or spec.col_e)
-  end
+  utils.write_buf(state.buf, ns, lines, hl_specs)
 end
 
 -- ── render ─────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ local fetch      = require("gh_dashboard.dashboard.fetch")
 local render     = require("gh_dashboard.dashboard.render")
 local duck       = require("gh_dashboard.duck")
 local gh         = require("gh_dashboard.gh")
+local utils      = require("gh_dashboard.utils")
 
 -- ── state ──────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ local ns = vim.api.nvim_create_namespace("GhDashboard")
 
 -- ── cache ──────────────────────────────────────────────────────────────────
 
-local cache_path = vim.fn.expand("~/.cache/nvim/gh-dashboard.json")
+local cache_path = config.CACHE_PATH
 
 local function read_cache()
   if vim.fn.filereadable(cache_path) == 0 then return nil end
@@ -194,7 +195,7 @@ local function open_url_at_cursor()
       elseif item.kind == "notifications" then
         require("gh_dashboard.notifications").toggle()
       else
-        vim.system({ "xdg-open", item.url })
+        utils.open_url(item.url)
       end
       return
     end
@@ -292,11 +293,14 @@ local function open_win()
   buf_map("<leader>gn", function() require("gh_dashboard.notifications").toggle() end)
   require("gh_dashboard.help").setup_keymap(state.buf, "dashboard")
 
+  local last_cursor_line = -1
   vim.api.nvim_create_autocmd("CursorMoved", {
     buffer = state.buf,
     callback = function()
       if not state.win or not vim.api.nvim_win_is_valid(state.win) then return end
-      local cur   = vim.api.nvim_win_get_cursor(state.win)[1] - 1
+      local cur = vim.api.nvim_win_get_cursor(state.win)[1] - 1
+      if cur == last_cursor_line then return end
+      last_cursor_line = cur
       local on_pr = false
       for _, item in ipairs(state.items) do
         if item.line == cur and item.kind == "pr" then on_pr = true; break end

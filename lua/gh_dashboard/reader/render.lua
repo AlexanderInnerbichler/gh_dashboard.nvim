@@ -1,4 +1,5 @@
-local M = {}
+local M     = {}
+local utils = require("gh_dashboard.utils")
 
 -- ── constants ──────────────────────────────────────────────────────────────
 
@@ -12,21 +13,7 @@ end
 
 local function age_string(iso8601)
   if not iso8601 or iso8601 == vim.NIL then return "" end
-  local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-  if not y then return "" end
-  local t    = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
-                         hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
-  local u    = os.date("!*t", t)  u.isdst = nil
-  local diff = os.time() - (t + os.difftime(t, os.time(u)))
-  if diff < 3600 then
-    return math.floor(diff / 60) .. "m ago"
-  elseif diff < 86400 then
-    return math.floor(diff / 3600) .. "h ago"
-  elseif diff < 604800 then
-    return math.floor(diff / 86400) .. "d ago"
-  else
-    return math.floor(diff / 604800) .. "w ago"
-  end
+  return utils.age_string(iso8601)
 end
 
 local function safe_str(v)
@@ -34,9 +21,7 @@ local function safe_str(v)
   return tostring(v)
 end
 
-local function sl(s)
-  return s:gsub("[\n\r]", " ")
-end
+local sl = utils.sl
 
 local function state_hl(s)
   local upper = s:upper()

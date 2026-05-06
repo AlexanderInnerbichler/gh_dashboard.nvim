@@ -75,6 +75,8 @@ local function apply()
   vim.api.nvim_set_hl(0, "GhDiffHunk",          { fg = "#61afef"               })
   -- notifications
   vim.api.nvim_set_hl(0, "GhNotifUnread", { fg = "#7fc8f8", bold = true, bg = "NONE" })
+  -- labels
+  vim.api.nvim_set_hl(0, "GhLabel",       { fg = "#a3be8c",              bg = "NONE" })
   -- duck animation water
   vim.api.nvim_set_hl(0, "GhDuckWater",     { fg = "#61afef" })
   vim.api.nvim_set_hl(0, "GhDuckWaterDark", { fg = "#4078a0" })

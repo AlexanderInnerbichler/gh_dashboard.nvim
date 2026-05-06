@@ -1,8 +1,10 @@
-local M        = {}
+local M          = {}
 local highlights = require("gh_dashboard.highlights")
 local fetch      = require("gh_dashboard.reader.fetch")
 local render     = require("gh_dashboard.reader.render")
 local actions    = require("gh_dashboard.reader.actions")
+local utils      = require("gh_dashboard.utils")
+local config     = require("gh_dashboard.config")
 
 -- ── state ──────────────────────────────────────────────────────────────────
 
@@ -25,15 +27,7 @@ local ns = vim.api.nvim_create_namespace("GhReader")
 -- ── buffer I/O ────────────────────────────────────────────────────────────
 
 local function write_buf(lines, hl_specs)
-  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
-  vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    local col_e = spec.col_e == -1 and -1 or spec.col_e
-    vim.api.nvim_buf_add_highlight(state.buf, ns, spec.hl, spec.line, spec.col_s, col_e)
-  end
+  utils.write_buf(state.buf, ns, lines, hl_specs)
 end
 
 -- ── window management ──────────────────────────────────────────────────────
@@ -54,7 +48,7 @@ local function close_input()
   end
 end
 
-local function sl(s) return s:gsub("[\n\r]", " ") end
+local sl = utils.sl
 
 local function register_keymaps()
   local function bmap(lhs, fn)
@@ -140,7 +134,7 @@ local function register_keymaps()
                 vim.notify("Merge failed: " .. err, vim.log.levels.ERROR)
               else
                 vim.notify("PR #" .. item.number .. " merged", vim.log.levels.INFO)
-                vim.uv.fs_unlink(vim.fn.expand("~/.cache/nvim/gh-dashboard.json"), function() end)
+                vim.uv.fs_unlink(config.CACHE_PATH, function() end)
                 M.open(item)
               end
             end)
@@ -164,7 +158,7 @@ local function register_keymaps()
             vim.notify("Close failed: " .. err, vim.log.levels.ERROR)
           else
             vim.notify("Issue #" .. item.number .. " closed", vim.log.levels.INFO)
-            vim.uv.fs_unlink(vim.fn.expand("~/.cache/nvim/gh-dashboard.json"), function() end)
+            vim.uv.fs_unlink(config.CACHE_PATH, function() end)
             M.open(item)
           end
         end)
@@ -194,7 +188,7 @@ local function open_popup(title, footer)
     return
   end
   local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.90)
+  local width  = math.floor(ui.width  * config.get().window_width)
   local height = math.floor(ui.height * 0.90)
   local row    = math.floor((ui.height - height) / 2)
   local col    = math.floor((ui.width  - width)  / 2)

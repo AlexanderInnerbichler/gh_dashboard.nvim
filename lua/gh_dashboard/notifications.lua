@@ -1,6 +1,7 @@
 local M = {}
 local gh         = require("gh_dashboard.gh")
 local highlights = require("gh_dashboard.highlights")
+local utils      = require("gh_dashboard.utils")
 
 local update_title  -- forward declaration
 
@@ -28,35 +29,13 @@ local REASON_LABELS = {
 local state = {
   buf      = nil,
   win      = nil,
-  items    = {},   -- { line, id, kind, number, repo, unread }
+  items    = {},
   show_all = false,
 }
 
 local ns = vim.api.nvim_create_namespace("GhNotifications")
 
 -- ── helpers ────────────────────────────────────────────────────────────────
-
-local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
-
-local function trunc(s, n)
-  s = sl(s)
-  return #s > n and s:sub(1, n - 3) .. "…" or s
-end
-
-local function age_string(iso8601)
-  if not iso8601 then return "" end
-  local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-  if not y then return "" end
-  local t  = os.time({ year = y, month = mo, day = d, hour = h, min = mi, sec = s })
-  local u  = os.date("!*t", t)  u.isdst = nil
-  local diff = os.time() - (t + os.difftime(t, os.time(u)))
-  if     diff < 60       then return "just now"
-  elseif diff < 3600     then return math.floor(diff / 60)    .. "m ago"
-  elseif diff < 86400    then return math.floor(diff / 3600)  .. "h ago"
-  elseif diff < 604800   then return math.floor(diff / 86400) .. "d ago"
-  else                        return math.floor(diff / 604800) .. "w ago"
-  end
-end
 
 local function parse_subject(url, stype)
   if type(url) ~= "string" then return nil, nil, nil end
@@ -69,15 +48,7 @@ end
 -- ── buffer write ───────────────────────────────────────────────────────────
 
 local function write_buf(lines, hl_specs)
-  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
-  vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    vim.api.nvim_buf_add_highlight(state.buf, ns, spec.hl, spec.line,
-      spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
-  end
+  utils.write_buf(state.buf, ns, lines, hl_specs)
 end
 
 -- ── render ─────────────────────────────────────────────────────────────────
@@ -92,7 +63,7 @@ local function render(notifs, err)
   table.insert(lines, "")
 
   if err then
-    local msg = "  ✗ " .. sl(err)
+    local msg = "  ✗ " .. utils.sl(err)
     table.insert(lines, msg)
     table.insert(hl_specs, { hl = "GhError", line = #lines - 1, col_s = 0, col_e = #msg })
   elseif not notifs or #notifs == 0 then
@@ -101,19 +72,18 @@ local function render(notifs, err)
     table.insert(lines, msg)
     table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = -1 })
   else
-    -- layout: dot(2) + icon(3) + repo(25) + 2 + title(fill) + 2 + reason(9) + 2 + age(8)
     local win_width = state.win and vim.api.nvim_win_is_valid(state.win)
       and vim.api.nvim_win_get_width(state.win) or 120
-    local fixed     = 2 + 3 + 25 + 2 + 2 + 9 + 2 + 8
-    local title_w   = math.max(20, win_width - fixed - 4)
+    local fixed   = 2 + 3 + 25 + 2 + 2 + 9 + 2 + 8
+    local title_w = math.max(20, win_width - fixed - 4)
 
     for _, n in ipairs(notifs) do
       local dot    = n.unread and "● " or "○ "
       local icon   = TYPE_ICONS[n.subject and n.subject.type] or "·  "
-      local repo   = trunc(type(n.repository) == "table" and n.repository.full_name or "?", 25)
-      local title  = trunc(n.subject and n.subject.title or "?", title_w)
+      local repo   = utils.trunc(type(n.repository) == "table" and n.repository.full_name or "?", 25)
+      local title  = utils.trunc(n.subject and n.subject.title or "?", title_w)
       local reason = REASON_LABELS[n.reason] or ""
-      local age    = age_string(n.updated_at)
+      local age    = utils.age_string(n.updated_at)
       local stype  = n.subject and n.subject.type
       local surl   = n.subject and n.subject.url
 
@@ -241,7 +211,7 @@ local function open_win()
     border     = "rounded",
     title      = " GitHub Notifications ",
     title_pos  = "center",
-    footer     = " <CR> open  ·  r read  ·  R refresh  ·  a toggle all  ·  q close ",
+    footer     = " <CR> open  ·  r read  ·  m read all  ·  R refresh  ·  a toggle all  ·  q close ",
     footer_pos = "center",
   })
 
@@ -288,6 +258,26 @@ local function open_win()
         fetch()
       end
     end)
+  end)
+
+  bmap("m", function()
+    local unreads = {}
+    for _, item in ipairs(state.items) do
+      if item.unread and item.id ~= "" then
+        table.insert(unreads, item.id)
+      end
+    end
+    if #unreads == 0 then
+      vim.notify("No unread notifications", vim.log.levels.INFO)
+      return
+    end
+    local pending = #unreads
+    for _, id in ipairs(unreads) do
+      mark_read(id, function()
+        pending = pending - 1
+        if pending == 0 then fetch() end
+      end)
+    end
   end)
 
   bmap("R", fetch)

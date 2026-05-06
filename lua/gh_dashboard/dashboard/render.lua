@@ -1,6 +1,12 @@
-local M      = {}
+local M       = {}
 local heatmap = require("gh_dashboard.heatmap")
 local config  = require("gh_dashboard.config")
+local utils   = require("gh_dashboard.utils")
+
+local sl          = utils.sl
+local trunc       = utils.trunc
+local age_string  = utils.age_string
+local age_seconds = utils.age_seconds
 
 -- ── helpers ────────────────────────────────────────────────────────────────
 
@@ -16,35 +22,6 @@ local EVENT_ICONS = {
 
 local function separator(width)
   return "  " .. string.rep("─", (width or 60) - 2)
-end
-
-local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
-
-local function trunc(s, n)
-  s = sl(s)
-  return #s > n and s:sub(1, n - 3) .. "…" or s
-end
-
-local function age_seconds(iso8601)
-  if not iso8601 then return 0 end
-  local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-  if not y then return 0 end
-  local t  = os.time({ year = y, month = mo, day = d, hour = h, min = mi, sec = s })
-  local u  = os.date("!*t", t)  u.isdst = nil
-  return os.time() - (t + os.difftime(t, os.time(u)))
-end
-
-local function age_string(iso8601)
-  if not iso8601 then return "" end
-  local diff = age_seconds(iso8601)
-  if     diff < 60        then return "just now"
-  elseif diff < 3600      then return math.floor(diff / 60)       .. "m ago"
-  elseif diff < 86400     then return math.floor(diff / 3600)     .. "h ago"
-  elseif diff < 604800    then return math.floor(diff / 86400)    .. "d ago"
-  elseif diff < 2592000   then return math.floor(diff / 604800)   .. "w ago"
-  elseif diff < 31536000  then return math.floor(diff / 2592000)  .. "mo ago"
-  else                         return math.floor(diff / 31536000) .. "y ago"
-  end
 end
 
 -- ── section renderers ──────────────────────────────────────────────────────
@@ -111,18 +88,21 @@ local function render_prs(lines, hl_specs, items, prs, err, win_width)
   else
     local cfg             = config.get()
     local stale_threshold = cfg.stale_pr_days * 86400
-    -- fixed overhead: 3 (indent) + 1 (#) + 4 (num) + 2 + 25 (repo) + 2 + 2 = 39; ~32 for age+tags
     local title_w = math.min(60, math.max(30, (win_width or 120) - 39 - 32))
     local age_col = 3 + 1 + 4 + 2 + title_w + 2 + 25 + 2
     for _, pr in ipairs(prs) do
       local age    = age_string(pr.updated_at)
-      local draft  = pr.is_draft    and " [draft]"  or ""
+      local draft  = pr.is_draft     and " [draft]"  or ""
       local review = pr.needs_review and " [review]" or ""
       local stale  = age_seconds(pr.updated_at) > stale_threshold and " [stale]" or ""
-      local title  = trunc(pr.title, title_w)
-      local repo   = trunc(pr.repo,  25)
-      local fmt    = "   #%-4d  %-" .. title_w .. "s  %-25s  %s%s%s%s"
-      local line   = string.format(fmt, pr.number, title, repo, age, draft, review, stale)
+      local label_str = ""
+      for i = 1, math.min(2, #(pr.labels or {})) do
+        label_str = label_str .. " [" .. pr.labels[i] .. "]"
+      end
+      local title = trunc(pr.title, title_w)
+      local repo  = trunc(pr.repo,  25)
+      local fmt   = "   #%-4d  %-" .. title_w .. "s  %-25s  %s%s%s%s%s"
+      local line  = string.format(fmt, pr.number, title, repo, age, draft, review, stale, label_str)
       table.insert(items, { line = #lines, url = pr.url, kind = "pr", number = pr.number, repo = pr.repo, title = pr.title })
       table.insert(lines, line)
       local ln      = #lines - 1
@@ -139,6 +119,10 @@ local function render_prs(lines, hl_specs, items, prs, err, win_width)
       if stale ~= "" then
         local s_col = tag_col + #draft + #review
         table.insert(hl_specs, { hl = "GhStale",    line = ln, col_s = s_col, col_e = s_col + #stale })
+      end
+      if label_str ~= "" then
+        local l_col = tag_col + #draft + #review + #stale
+        table.insert(hl_specs, { hl = "GhLabel", line = ln, col_s = l_col, col_e = l_col + #label_str })
       end
     end
   end
@@ -161,8 +145,6 @@ local function render_issues(lines, hl_specs, items, issues, err, win_width)
     table.insert(lines, msg)
     table.insert(hl_specs, { hl = "GhEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
   else
-    -- layout: "   <repo(15)>  #<num(4)>  <title>  <age>"
-    -- overhead: 3 + 15 + 2 + 1 + 4 + 2 + 2 = 29; ~10 for age
     local repo_w  = 20
     local title_w = math.min(60, math.max(30, (win_width or 120) - 29 - 12))
     local age_col = 3 + repo_w + 2 + 1 + 4 + 2 + title_w + 2
@@ -174,18 +156,25 @@ local function render_issues(lines, hl_specs, items, issues, err, win_width)
         color_count = color_count + 1
         repo_colors[iss.repo] = (color_count - 1) % 6 + 1
       end
-      local age   = age_string(iss.created_at)
-      local title = trunc(iss.title, title_w)
-      local repo  = trunc(short_repo, repo_w)
-      local fmt   = "   %-" .. repo_w .. "s  #%-4d  %-" .. title_w .. "s  %s"
-      local line  = string.format(fmt, repo, iss.number, title, age)
+      local age       = age_string(iss.created_at)
+      local title     = trunc(iss.title, title_w)
+      local repo      = trunc(short_repo, repo_w)
+      local label_str = ""
+      for i = 1, math.min(2, #(iss.labels or {})) do
+        label_str = label_str .. " [" .. iss.labels[i] .. "]"
+      end
+      local fmt  = "   %-" .. repo_w .. "s  #%-4d  %-" .. title_w .. "s  %s%s"
+      local line = string.format(fmt, repo, iss.number, title, age, label_str)
       table.insert(items, { line = #lines, url = iss.url, kind = "issue", number = iss.number, repo = iss.repo })
       table.insert(lines, line)
       local ln       = #lines - 1
       local num_col  = 3 + repo_w + 2
       table.insert(hl_specs, { hl = "GhIssueRepo" .. repo_colors[iss.repo], line = ln, col_s = 3,       col_e = 3 + repo_w })
       table.insert(hl_specs, { hl = "GhItem",                               line = ln, col_s = num_col, col_e = num_col + 6 })
-      table.insert(hl_specs, { hl = "GhMeta",                               line = ln, col_s = age_col, col_e = -1 })
+      table.insert(hl_specs, { hl = "GhMeta",                               line = ln, col_s = age_col, col_e = age_col + #age })
+      if label_str ~= "" then
+        table.insert(hl_specs, { hl = "GhLabel", line = ln, col_s = age_col + #age, col_e = -1 })
+      end
     end
   end
   table.insert(lines, separator(win_width))
@@ -284,14 +273,12 @@ end
 
 -- ── public: build all lines/highlights/items ───────────────────────────────
 
---- Build display content for the dashboard.
---- Returns lines, hl_specs, items tables ready for writing to a buffer.
 function M.build(data, is_loading, is_stale, win_width)
   local lines    = {}
   local hl_specs = {}
   local items    = {}
 
-  table.insert(lines, "")  -- top padding
+  table.insert(lines, "")
 
   render_profile(lines, hl_specs, items, data.profile, data.contributions and data.contributions.total,
     win_width, is_loading, is_stale, data.notif_count)
