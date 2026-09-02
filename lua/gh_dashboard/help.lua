@@ -7,7 +7,6 @@ local HELP = {
     { key = "<CR> / o",    desc = "Open item under cursor" },
     { key = "d",           desc = "Open PR diff" },
     { key = "w",           desc = "Watch / unwatch repo" },
-    { key = "s",           desc = "Search all repos (fuzzy picker)" },
     { key = "r",           desc = "Refresh dashboard" },
     { key = "<leader>gw",  desc = "Open watchlist manager" },
     { key = "<leader>gn",  desc = "Open notifications" },

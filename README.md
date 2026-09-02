@@ -64,7 +64,6 @@ require("gh_dashboard").setup({
 | `<CR>` / `o` | Open item under cursor (PR/issue reader, repo view, user profile, day activity, notifications) |
 | `d` | Open the diff viewer for the PR under cursor |
 | `w` | Toggle repo watchlist for repo under cursor |
-| `s` | Fuzzy-search and open any of your repos |
 | `r` | Force refresh (clears cache) |
 | `<leader>gw` | Repo watchlist |
 | `<leader>gn` | Notifications panel |
