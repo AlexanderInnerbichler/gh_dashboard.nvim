@@ -7,6 +7,24 @@ function M.trunc(s, n)
   return #s > n and s:sub(1, n - 3) .. "…" or s
 end
 
+--- Truncate to n display cells. M.trunc counts bytes, which misaligns any
+--- column holding multibyte characters (… — ★ and the like).
+function M.dtrunc(s, n)
+  s = M.sl(s)
+  if vim.fn.strdisplaywidth(s) <= n then return s end
+  local out = ""
+  for _, ch in ipairs(vim.fn.split(s, "\\zs")) do
+    if vim.fn.strdisplaywidth(out .. ch) > n - 1 then break end
+    out = out .. ch
+  end
+  return out .. "…"
+end
+
+--- Right-pad to n display cells.
+function M.dpad(s, n)
+  return s .. string.rep(" ", math.max(0, n - vim.fn.strdisplaywidth(s)))
+end
+
 function M.age_seconds(iso8601)
   if not iso8601 then return 0 end
   local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")

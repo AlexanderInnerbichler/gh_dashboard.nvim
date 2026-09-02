@@ -270,7 +270,7 @@ local function open_win()
     local cur_line = vim.api.nvim_win_get_cursor(state.win)[1] - 1
     for _, item in ipairs(state.items) do
       if item.line == cur_line and item.kind == "pr" then
-        require("gh_dashboard.reader").open_diff(item)
+        require("gh_dashboard.diff").open(item)
         return
       end
     end

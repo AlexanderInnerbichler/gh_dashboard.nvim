@@ -15,9 +15,6 @@ local state = {
   data          = nil,
   input_buf     = nil,
   input_win     = nil,
-  diff_item     = nil,
-  diff_line_map = {},
-  diff_head_sha = nil,
 }
 
 -- ── namespace ──────────────────────────────────────────────────────────────
@@ -352,72 +349,7 @@ function M.open(item)
 end
 
 M.open_diff = function(item)
-  open_popup(string.format(" PR #%d diff ", item.number), " c comment · q close ")
-  vim.wo[state.win].wrap = false
-
-  state.diff_item     = item
-  state.diff_line_map = {}
-  state.diff_head_sha = nil
-
-  write_buf({ "", "  Loading diff…" }, {})
-
-  vim.keymap.set("v", "c", function()
-    vim.cmd("normal! \27")  -- exit visual mode first so '< '> are committed
-    local end_ln = vim.fn.getpos("'>")[2] - 1
-    local info   = state.diff_line_map[end_ln]
-    if not info then
-      vim.notify("Cannot comment on this line", vim.log.levels.INFO)
-      return
-    end
-    if not state.diff_head_sha or state.diff_head_sha == "" then
-      vim.notify("Still loading, please try again", vim.log.levels.INFO)
-      return
-    end
-    vim.schedule(function()  -- defer so startinsert runs after mode transition settles
-      M.open_input("Review comment  |  <C-s> submit  ·  <Esc><Esc> cancel", function(body)
-        if body == "" then
-          vim.notify("Comment cannot be empty", vim.log.levels.WARN)
-          return
-        end
-        fetch.post_review_comment(
-          state.diff_item.number, state.diff_item.repo,
-          state.diff_head_sha, info.path, info.line, info.side,
-          body, function(err)
-            if err then
-              vim.notify("Failed: " .. err:gsub("[\n\r]", " "), vim.log.levels.ERROR)
-            else
-              vim.notify("Review comment posted", vim.log.levels.INFO)
-            end
-          end
-        )
-      end)
-    end)
-  end, { buffer = state.buf, nowait = true, silent = true })
-  require("gh_dashboard.help").setup_keymap(state.buf, "diff")
-
-  local pending = 2
-  local diff_text, diff_err, head_sha
-
-  local function on_both()
-    pending = pending - 1
-    if pending > 0 then return end
-    state.diff_head_sha = head_sha or ""
-    local lines, hl_specs = {}, {}
-    table.insert(lines, "")
-    render.render_diff_content(lines, hl_specs, item.number, item.repo,
-                               diff_text or "", diff_err, state.diff_line_map)
-    table.insert(lines, "")
-    write_buf(lines, hl_specs)
-  end
-
-  fetch.fetch_diff(item.number, item.repo, function(err, text)
-    diff_err, diff_text = err, text
-    on_both()
-  end)
-  fetch.fetch_head_sha(item.number, item.repo, function(_, sha)
-    head_sha = sha
-    on_both()
-  end)
+  require("gh_dashboard.diff").open(item)
 end
 
 -- expose action shortcuts so callers don't need to require actions directly
