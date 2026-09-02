@@ -65,9 +65,19 @@ function M.write_buf(buf, ns, lines, hl_specs)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+  -- extmarks rather than the deprecated nvim_buf_add_highlight; they need
+  -- in-range columns, so clamp to the line the spec actually lands on.
   for _, spec in ipairs(hl_specs) do
-    vim.api.nvim_buf_add_highlight(buf, ns, spec.hl, spec.line, spec.col_s,
-      spec.col_e == -1 and -1 or spec.col_e)
+    local text = lines[spec.line + 1]
+    if text then
+      local len   = #text
+      local col_s = math.min(spec.col_s, len)
+      local col_e = spec.col_e == -1 and len or math.min(spec.col_e, len)
+      if col_e > col_s then
+        vim.api.nvim_buf_set_extmark(buf, ns, spec.line, col_s,
+          { end_col = col_e, hl_group = spec.hl })
+      end
+    end
   end
 end
 

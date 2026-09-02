@@ -97,14 +97,7 @@ local function render_list(repos)
     end
   end
 
-  vim.bo[state.list_buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.list_buf, 0, -1, false, lines)
-  vim.bo[state.list_buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.list_buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    vim.api.nvim_buf_add_highlight(state.list_buf, ns, spec.hl, spec.line,
-      spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
-  end
+  utils.write_buf(state.list_buf, ns, lines, hl_specs)
 end
 
 -- ── rebuild unified list ────────────────────────────────────────────────────

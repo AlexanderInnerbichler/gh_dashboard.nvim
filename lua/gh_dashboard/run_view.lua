@@ -36,15 +36,7 @@ end
 -- ── buffer I/O ─────────────────────────────────────────────────────────────
 
 local function write_buf(lines, hl_specs)
-  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
-  vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    vim.api.nvim_buf_add_highlight(state.buf, ns, spec.hl, spec.line,
-      spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
-  end
+  utils.write_buf(state.buf, ns, lines, hl_specs)
 end
 
 -- ── render ─────────────────────────────────────────────────────────────────

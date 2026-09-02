@@ -56,6 +56,13 @@ reset_state()
 
 local function opts() return config.get().diff end
 
+--- vim.defer_fn only closes its timer when it fires, so a superseded one has to
+--- be closed by hand or it leaks a libuv handle per cursor move.
+local function cancel_preview()
+  if state.timer and not state.timer:is_closing() then state.timer:close() end
+  state.timer = nil
+end
+
 -- ── diffopt ────────────────────────────────────────────────────────────────
 
 --- diffopt is global, so rebuild it from the value we captured on open rather
@@ -822,7 +829,7 @@ local function setup_autocmds()
       local ln  = vim.api.nvim_win_get_cursor(state.picker_win)[1] - 1
       local idx = state.row_map[ln]
       if not idx or idx == state.index then return end
-      if state.timer then state.timer:stop() end
+      cancel_preview()
       state.timer = vim.defer_fn(function()
         if is_open() and picker_open()
           and state.row_map[vim.api.nvim_win_get_cursor(state.picker_win)[1] - 1] == idx then
@@ -855,7 +862,7 @@ end
 -- ── public API ─────────────────────────────────────────────────────────────
 
 function M.close()
-  if state.timer then state.timer:stop() end
+  cancel_preview()
   close_picker()
   restore_diffopt()
   if is_open() then

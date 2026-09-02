@@ -78,14 +78,7 @@ local function apply_render()
   local lines, hl_specs, items, hm_left_pad = render.build(data, state.is_loading, state.is_stale, win_width)
   state.items = items
 
-  vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    local col_e = spec.col_e == -1 and -1 or spec.col_e
-    vim.api.nvim_buf_add_highlight(state.buf, ns, spec.hl, spec.line, spec.col_s, col_e)
-  end
+  utils.write_buf(state.buf, ns, lines, hl_specs)
 
   -- start duck animation in the empty space right of the heatmap
   local heatmap_base = nil

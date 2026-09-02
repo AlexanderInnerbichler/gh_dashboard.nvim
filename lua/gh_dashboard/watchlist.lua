@@ -162,16 +162,12 @@ local function show_notification(repo, ev)
   local line1 = "  " .. icon .. label .. (age ~= "" and ("   " .. age) or "")
   local line2 = detail ~= "" and ("  " .. detail) or nil
 
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.b[buf].render_markdown = { enabled = false }
-  vim.bo[buf].bufhidden = "wipe"
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line1, line2 or "", "", "" })
-  vim.bo[buf].modifiable = false
-  vim.api.nvim_buf_add_highlight(buf, ns, "GhWatchNotif", 0, 2, 2 + #icon)
+  local buf      = utils.scratch_buf()
+  local hl_specs = { { hl = "GhWatchNotif", line = 0, col_s = 2, col_e = 2 + #icon } }
   if line2 then
-    vim.api.nvim_buf_add_highlight(buf, ns, "GhWatchMeta", 1, 0, -1)
+    table.insert(hl_specs, { hl = "GhWatchMeta", line = 1, col_s = 0, col_e = -1 })
   end
+  utils.write_buf(buf, ns, { line1, line2 or "", "", "" }, hl_specs)
 
   local win = vim.api.nvim_open_win(buf, false, {
     relative   = "editor",

@@ -143,14 +143,7 @@ M.open = function(username, date)
     render_events(lines, hl_specs, username, date, events or {}, err)
     table.insert(lines, "")
 
-    vim.bo[buf].modifiable = true
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    vim.bo[buf].modifiable = false
-    vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-    for _, spec in ipairs(hl_specs) do
-      vim.api.nvim_buf_add_highlight(buf, ns, spec.hl, spec.line,
-        spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
-    end
+    utils.write_buf(buf, ns, lines, hl_specs)
   end)
 end
 

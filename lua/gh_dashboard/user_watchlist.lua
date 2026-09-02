@@ -54,14 +54,7 @@ local function render_manager()
     end
   end
   table.insert(lines, "")
-  vim.bo[state.manager_buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.manager_buf, 0, -1, false, lines)
-  vim.bo[state.manager_buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.manager_buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    vim.api.nvim_buf_add_highlight(state.manager_buf, ns, spec.hl, spec.line,
-      spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
-  end
+  utils.write_buf(state.manager_buf, ns, lines, hl_specs)
 end
 
 local function close_manager()
