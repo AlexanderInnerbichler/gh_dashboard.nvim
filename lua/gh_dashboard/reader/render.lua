@@ -11,17 +11,9 @@ local function separator()
   return "  " .. string.rep("─", CODE_WIDTH + 2)
 end
 
-local function age_string(iso8601)
-  if not iso8601 or iso8601 == vim.NIL then return "" end
-  return utils.age_string(iso8601)
-end
-
-local function safe_str(v)
-  if v == nil or v == vim.NIL then return "" end
-  return tostring(v)
-end
-
-local sl = utils.sl
+local age_string = utils.age_string
+local safe_str   = utils.safe_str
+local sl         = utils.sl
 
 local function state_hl(s)
   local upper = s:upper()

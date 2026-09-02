@@ -24,12 +24,8 @@ local ns = vim.api.nvim_create_namespace("GhRepoPicker")
 
 -- ── helpers ────────────────────────────────────────────────────────────────
 
-local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
-
-local function trunc(s, n)
-  s = sl(s)
-  return #s > n and s:sub(1, n - 3) .. "…" or s
-end
+local sl    = utils.sl
+local trunc = utils.trunc
 
 -- ── close ──────────────────────────────────────────────────────────────────
 

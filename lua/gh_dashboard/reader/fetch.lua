@@ -1,17 +1,11 @@
 local M  = {}
-local gh = require("gh_dashboard.gh")
+local gh    = require("gh_dashboard.gh")
+local utils = require("gh_dashboard.utils")
 
 -- ── helpers ────────────────────────────────────────────────────────────────
 
-local function safe_str(v)
-  if v == nil or v == vim.NIL then return "" end
-  return tostring(v)
-end
-
-local function safe_list(v)
-  if type(v) ~= "table" then return {} end
-  return v
-end
+local safe_str  = utils.safe_str
+local safe_list = utils.safe_list
 
 -- ── fetch functions ────────────────────────────────────────────────────────
 

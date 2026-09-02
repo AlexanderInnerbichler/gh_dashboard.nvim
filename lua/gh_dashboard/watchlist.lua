@@ -525,30 +525,11 @@ local function open_manager()
     vim.bo[state.manager_buf].filetype   = "text"
   end
 
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.90)
-  local height = math.floor(ui.height * 0.90)
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  state.manager_win = vim.api.nvim_open_win(state.manager_buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " Watched Repos ",
-    title_pos  = "center",
-    footer     = " <CR> view   a add   d/x remove   q close ",
-    footer_pos = "center",
+  state.manager_win = utils.float(state.manager_buf, {
+    cursorline = true,
+    title  = " Watched Repos ",
+    footer = " <CR> view   a add   d/x remove   q close ",
   })
-  vim.wo[state.manager_win].number         = false
-  vim.wo[state.manager_win].relativenumber = false
-  vim.wo[state.manager_win].signcolumn     = "no"
-  vim.wo[state.manager_win].cursorline     = true
-  vim.wo[state.manager_win].foldenable     = false
 
   render_manager()
   fetch_manager_meta()
@@ -633,32 +614,13 @@ local function open_history_popup()
   table.insert(lines, "")
   write_buf(buf, lines, hl_specs)
 
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.70)
-  local height = math.floor(ui.height * 0.50)
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  local win = vim.api.nvim_open_win(buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " Recent Notifications ",
-    title_pos  = "center",
-    footer     = " <CR> open   q close ",
-    footer_pos = "center",
+  local win = utils.float(buf, {
+    w = 0.70, h = 0.50, cursorline = true,
+    title  = " Recent Notifications ",
+    footer = " <CR> open   q close ",
   })
   vim.api.nvim_set_option_value("winhl",
     "FloatTitle:GhWatchTitle,FloatBorder:GhWatchSep", { win = win })
-  vim.wo[win].cursorline     = true
-  vim.wo[win].number         = false
-  vim.wo[win].relativenumber = false
-  vim.wo[win].signcolumn     = "no"
-  vim.wo[win].foldenable     = false
 
   local function bmap(lhs, fn)
     vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true, silent = true })

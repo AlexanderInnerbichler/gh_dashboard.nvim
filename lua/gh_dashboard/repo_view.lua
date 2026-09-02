@@ -397,31 +397,10 @@ local function open_win()
     return
   end
 
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.90)
-  local height = math.floor(ui.height * 0.90)
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  state.win = vim.api.nvim_open_win(state.buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = title,
-    title_pos  = "center",
-    footer     = " <CR>/o open   n new issue   r refresh   ? help   q close ",
-    footer_pos = "center",
+  state.win = utils.float(state.buf, {
+    cursorline = true, title = title,
+    footer = " <CR>/o open   n new issue   r refresh   ? help   q close ",
   })
-  vim.wo[state.win].number         = false
-  vim.wo[state.win].relativenumber = false
-  vim.wo[state.win].signcolumn     = "no"
-  vim.wo[state.win].wrap           = false
-  vim.wo[state.win].cursorline     = true
-  vim.wo[state.win].foldenable     = false
 
   highlights.setup()
 
