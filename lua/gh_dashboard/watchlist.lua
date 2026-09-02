@@ -1,5 +1,6 @@
 local M = {}
 local config     = require("gh_dashboard.config")
+local gh_events = require("gh_dashboard.events")
 local gh         = require("gh_dashboard.gh")
 local highlights = require("gh_dashboard.highlights")
 local utils      = require("gh_dashboard.utils")
@@ -230,25 +231,17 @@ local function mark_seen(entry, ev_id)
 end
 
 local function seed_seen(entry)
-  gh.run_with_retry(
-    { "gh", "api", "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
-      "--jq", "[.[] | {id}] | .[0:10]" },
-    function(err, events)
-      if err or type(events) ~= "table" then return end
-      for _, ev in ipairs(events) do
-        mark_seen(entry, tostring(ev.id))
-      end
-      save_watchlist()
+  gh_events.repo(entry.owner, entry.repo, function(err, events)
+    if err or type(events) ~= "table" then return end
+    for i = 1, math.min(10, #events) do
+      mark_seen(entry, tostring(events[i].id))
     end
-  )
+    save_watchlist()
+  end)
 end
 
 local function poll_repo(entry, on_done)
-  gh.run_with_retry(
-    { "gh", "api",
-      "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
-      "--jq", "[.[] | {id,type,created_at,payload}] | .[0:10]" },
-    function(err, events)
+  gh_events.repo(entry.owner, entry.repo, function(err, events)
       if not (err or not events or type(events) ~= "table" or #events == 0) then
         local new_events  = {}
         local notif_items = {}
@@ -283,21 +276,16 @@ end
 
 local function seed_history()
   for _, entry in ipairs(state.repos) do
-    gh.run_with_retry(
-      { "gh", "api",
-        "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
-        "--jq", "[.[] | {id,type,created_at,payload}] | .[0:5]" },
-      function(err, events)
-        if err or not events or type(events) ~= "table" then return end
-        local repo_key = entry.owner .. "/" .. entry.repo
-        for _, ev in ipairs(events) do
-          table.insert(state.history, { _repo = repo_key, _ev = ev })
-        end
-        while #state.history > config.get().max_history do
-          table.remove(state.history)
-        end
+    gh_events.repo(entry.owner, entry.repo, function(err, events)
+      if err or type(events) ~= "table" then return end
+      local repo_key = entry.owner .. "/" .. entry.repo
+      for i = 1, math.min(5, #events) do
+        table.insert(state.history, { _repo = repo_key, _ev = events[i] })
       end
-    )
+      while #state.history > config.get().max_history do
+        table.remove(state.history)
+      end
+    end)
   end
 end
 

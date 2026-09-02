@@ -1,5 +1,6 @@
 local M = {}
 local gh      = require("gh_dashboard.gh")
+local gh_events = require("gh_dashboard.events")
 local heatmap = require("gh_dashboard.heatmap")
 local config  = require("gh_dashboard.config")
 
@@ -247,12 +248,6 @@ function M.activity_feed(callback, own_login)
   local last_err
 
   local cap = config.get().feed_events_per_source
-  local JQ  = '[.[] | {type, actor:.actor.login, repo:.repo.name, created_at,' ..
-    'action:.payload.action, merged:.payload.pull_request.merged,' ..
-    'pr_number:.payload.pull_request.number, issue_number:.payload.issue.number,' ..
-    'ref:.payload.ref, ref_type:.payload.ref_type,' ..
-    'release_tag:.payload.release.tag_name}] | .[0:' .. cap .. ']'
-
   local function collect(err, events)
     if err then last_err = err
     else
@@ -274,17 +269,20 @@ function M.activity_feed(callback, own_login)
     end
   end
 
+  local function collect_raw(err, evs)
+    if err then collect(err, nil) return end
+    local out = {}
+    for i = 1, math.min(cap, #(evs or {})) do
+      table.insert(out, gh_events.feed_item(evs[i]))
+    end
+    collect(nil, out)
+  end
+
   for _, username in ipairs(users) do
-    gh.run_with_retry(
-      { "gh", "api", "/users/" .. username .. "/events", "--jq", JQ },
-      function(err, evs) collect(err, evs) end
-    )
+    gh_events.user(username, collect_raw)
   end
   for _, r in ipairs(repos) do
-    gh.run_with_retry(
-      { "gh", "api", "/repos/" .. r.owner .. "/" .. r.repo .. "/events", "--jq", JQ },
-      function(err, evs) collect(err, evs) end
-    )
+    gh_events.repo(r.owner, r.repo, collect_raw)
   end
 end
 
