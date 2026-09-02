@@ -42,7 +42,7 @@ local HELP = {
     { key = "zo / zc",     desc = "Open / close fold (zR / zM for all)" },
     { key = "<C-h>",       desc = "Reopen the file picker" },
     { key = "r",           desc = "Refresh" },
-    { key = "q",           desc = "Diff: back to picker · Picker: close" },
+    { key = "q",           desc = "Back to picker (from the picker, close)" },
     { key = "?",           desc = "Toggle this help" },
   },
   notifications = {

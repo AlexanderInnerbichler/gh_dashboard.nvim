@@ -199,7 +199,7 @@ local function picker_title()
   for _, f in ipairs(state.files) do
     if state.viewed[f.path] then viewed_n = viewed_n + 1 end
   end
-  return string.format(" PR #%d  ·  %s  ·  %d/%d viewed ",
+  return string.format(" PR #%d   %s   %d/%d viewed ",
     state.item.number, state.item.repo, viewed_n, #state.files)
 end
 
@@ -274,12 +274,12 @@ end
 --- The keys worth knowing, longest set that fits. A split layout has no
 --- floating-window footer, so the winbar is the only pinned place for them.
 local HINT_TIERS = {
-  "q files · <Tab> next · ]h hunk · <Spc> viewed · c comment · A submit · x unified · ? help",
-  "q files · <Tab> next · ]h hunk · <Spc> viewed · c comment · A submit · ? help",
-  "q files · <Tab> next · ]h hunk · <Spc> viewed · c comment · ? help",
-  "q files · <Tab> next · <Spc> viewed · c comment · ? help",
-  "q files · <Spc> viewed · c comment · ? help",
-  "q files · ? help",
+  "q files  <Tab> next  ]h hunk  <Spc> viewed  c comment  A submit  x unified  ? help",
+  "q files  <Tab> next  ]h hunk  <Spc> viewed  c comment  A submit  ? help",
+  "q files  <Tab> next  ]h hunk  <Spc> viewed  c comment  ? help",
+  "q files  <Tab> next  <Spc> viewed  c comment  ? help",
+  "q files  <Spc> viewed  c comment  ? help",
+  "q files  ? help",
 }
 
 local function hints_for(avail)
@@ -313,7 +313,7 @@ local function open_picker()
     border     = "rounded",
     title      = picker_title(),
     title_pos  = "center",
-    footer     = " <CR> open  ·  <Space> viewed  ·  S sort  ·  f filter  ·  q close ",
+    footer     = " <CR> open   <Space> viewed   S sort   f filter   q close ",
     footer_pos = "center",
   })
   vim.wo[state.picker_win].number         = false
@@ -617,7 +617,7 @@ local function add_comment(mode)
   end
   vim.schedule(function()
     require("gh_dashboard.reader").open_input(
-      "Review comment  |  <C-s> queue  ·  <Esc><Esc> cancel",
+      "Review comment  |  <C-s> queue   <Esc><Esc> cancel",
       function(body)
         if body == "" then return end
         review.add(vim.tbl_extend("force", target, { body = body, login = "you" }))
@@ -643,7 +643,7 @@ local function submit_review()
                  or choice == "Request Changes" and "REQUEST_CHANGES"
                  or "COMMENT"
       require("gh_dashboard.reader").open_input(
-        choice .. " — summary  |  <C-s> submit  ·  <Esc><Esc> cancel",
+        choice .. " — summary  |  <C-s> submit   <Esc><Esc> cancel",
         function(body)
           if event == "COMMENT" and body == "" and #pending == 0 then
             vim.notify("Nothing to submit", vim.log.levels.WARN)

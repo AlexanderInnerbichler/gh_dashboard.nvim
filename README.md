@@ -79,19 +79,19 @@ require("gh_dashboard").setup({
 every changed file. `<CR>` takes you into the diff; `q` takes you back out to the picker.
 
 ```
-╭──────── PR #9 · you/repo · 3/14 viewed ─────────╮
-│  14 files  +1911  −1927            no-gen · path│
+╭──────── PR #9  you/repo  3/14 viewed ─────────╮
+│  14 files  +1911  −1927            no-gen  path│
 │─────────────────────────────────────────────────│
 │  ✓ M  lua/gh_dashboard/init.lua  +39  −732 ▇▇▇▇▁│
 │    D  lua/gh_dashboard/reader.lua +0 −1131 ▇▇▇▇▇│
 │    A  lua/gh_dashboard/reader/init.lua +432 ▇▇▁▁│
-╰─── <CR> open · <Space> viewed · S sort · q close ╯
+╰─── <CR> open  <Space> viewed  S sort  q close ╯
 ```
 
 Inside, the diff takes the full width of the terminal:
 
 ```
- base  master                         │ lua/gh_dashboard/init.lua    q files · <Tab> next · ]h hunk · ? help
+ base  master                         │ lua/gh_dashboard/init.lua    q files  <Tab> next  ]h hunk  ? help
    1 local M = {}                     │   1 local M = {}
    2 local heatmap = require(…)       │   2 local heatmap    = require(…)
      ------------------------------   │   3 local highlights = require(…)
@@ -133,7 +133,7 @@ the repo from the working directory; `:GhDiff 42 owner/repo` targets any repo.
 | `O` / `gy` | Open on github.com / yank a permalink |
 | `<C-h>` | Reopen the file picker |
 | `r` | Refresh |
-| `q` | In the diff: back to the picker · In the picker: close |
+| `q` | In the diff: back to the picker  In the picker: close |
 
 Keys marked *(picker)* are bound in the picker only, so `w`, `f`, `F` and `S` stay native
 motions in the diff windows.

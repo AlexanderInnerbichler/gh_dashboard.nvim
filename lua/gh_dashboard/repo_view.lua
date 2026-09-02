@@ -165,7 +165,7 @@ local function render(data)
   else
     local names = {}
     for _, b in ipairs(data.branches) do table.insert(names, b.name) end
-    local line = "   " .. table.concat(names, "  ·  ")
+    local line = "   " .. table.concat(names, "   ")
     table.insert(lines, line)
     table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 0, col_e = -1 })
   end
@@ -336,7 +336,7 @@ local function open_input(hint, on_submit)
     border     = "rounded",
     title      = " " .. hint .. " ",
     title_pos  = "center",
-    footer     = " <C-s> submit  ·  q / <Esc><Esc> cancel ",
+    footer     = " <C-s> submit   q / <Esc><Esc> cancel ",
     footer_pos = "center",
   })
   vim.wo[state.input_win].number         = false
@@ -413,7 +413,7 @@ local function open_win()
     border     = "rounded",
     title      = title,
     title_pos  = "center",
-    footer     = " <CR>/o open  ·  n new issue  ·  r refresh  ·  ? help  ·  q close ",
+    footer     = " <CR>/o open   n new issue   r refresh   ? help   q close ",
     footer_pos = "center",
   })
   vim.wo[state.win].number         = false

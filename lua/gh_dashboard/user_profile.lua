@@ -73,7 +73,7 @@ local function render_content(lines, hl_specs, items, username, profile, contrib
   elseif profile then
     local total = contrib and contrib.total or 0
     local stats = string.format(
-      "  👥 %d followers · %d following · %d repos · %d contributions",
+      "  👥 %d followers  %d following  %d repos  %d contributions",
       profile.followers or 0, profile.following or 0, profile.public_repos or 0, total
     )
     table.insert(lines, stats)

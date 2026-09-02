@@ -119,7 +119,7 @@ function M.render(ctx)
     if #ctx.pending > 0 then
       table.insert(notes, string.format("%d pending", #ctx.pending))
     end
-    local right = table.concat(notes, " · ")
+    local right = table.concat(notes, "  ")
     local left  = string.format("  %d files  +%d  −%d", #ctx.files, total_add, total_del)
     local ln    = add(utils.dpad(left, math.max(0, width - #right - 2)) .. right)
     local plus, minus = left:find("%+"), left:find("−")

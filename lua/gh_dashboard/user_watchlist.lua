@@ -92,7 +92,7 @@ local function open_add_input()
     border     = "rounded",
     title      = " Add GitHub username ",
     title_pos  = "center",
-    footer     = " <C-s> confirm  ·  <Esc><Esc> cancel ",
+    footer     = " <C-s> confirm   <Esc><Esc> cancel ",
     footer_pos = "center",
   })
   vim.wo[input_win].wrap       = true
@@ -182,7 +182,7 @@ local function open_manager()
     border     = "rounded",
     title      = " Watched Users ",
     title_pos  = "center",
-    footer     = " a add  ·  d/x remove  ·  <CR> profile  ·  q close ",
+    footer     = " a add   d/x remove   <CR> profile   q close ",
     footer_pos = "center",
   })
   vim.wo[state.manager_win].number         = false

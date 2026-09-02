@@ -72,10 +72,10 @@ local function render_jobs(jobs, logs_by_job_id)
   -- Run summary header
   local c          = type(item.conclusion) == "string" and item.conclusion or "in_progress"
   local icon, icon_hl = conclusion_icon(c)
-  local summary    = "  Run: " .. sl(item.run_name or "?") .. "  ·  " .. sl(item.repo or "?")
-    .. "  ·  " .. icon .. "  " .. c
+  local summary    = "  Run: " .. sl(item.run_name or "?") .. "   " .. sl(item.repo or "?")
+    .. "   " .. icon .. "  " .. c
   table.insert(lines, summary)
-  local icon_off = #"  Run: " + #sl(item.run_name or "?") + #"  ·  " + #sl(item.repo or "?") + #"  ·  "
+  local icon_off = #"  Run: " + #sl(item.run_name or "?") + #"   " + #sl(item.repo or "?") + #"   "
   table.insert(hl_specs, { hl = "GhReaderTitle", line = #lines - 1, col_s = 0,        col_e = icon_off })
   table.insert(hl_specs, { hl = icon_hl,         line = #lines - 1, col_s = icon_off, col_e = -1 })
   table.insert(lines, "")
@@ -106,7 +106,7 @@ local function render_jobs(jobs, logs_by_job_id)
         table.insert(step_parts, sicon .. " " .. sl(step.name or ""))
       end
       if #step_parts > 0 then
-        local step_line = "      " .. table.concat(step_parts, "  ·  ")
+        local step_line = "      " .. table.concat(step_parts, "   ")
         table.insert(lines, step_line)
         table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 0, col_e = -1 })
       end
@@ -263,7 +263,7 @@ local function open_win()
     border     = "rounded",
     title      = title,
     title_pos  = "center",
-    footer     = " r refresh  ·  q close ",
+    footer     = " r refresh   q close ",
     footer_pos = "center",
   })
 

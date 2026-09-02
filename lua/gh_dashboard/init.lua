@@ -226,8 +226,8 @@ local function open_win()
   local row    = math.floor((ui.height - height) / 2)
   local col    = math.floor((ui.width  - width)  / 2)
 
-  local footer_default = " <CR> open  ·  w watch  ·  r refresh  ·  <leader>gw watchlist  ·  <leader>gn notifs  ·  q close "
-  local footer_pr      = " <CR> open  ·  d diff  ·  w watch  ·  r refresh  ·  q close "
+  local footer_default = " <CR> open   w watch   r refresh   <leader>gw watchlist   <leader>gn notifs   q close "
+  local footer_pr      = " <CR> open   d diff   w watch   r refresh   q close "
 
   state.win = vim.api.nvim_open_win(state.buf, true, {
     relative   = "editor",

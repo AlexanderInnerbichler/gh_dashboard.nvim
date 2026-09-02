@@ -48,7 +48,7 @@ local function render_profile(lines, hl_specs, items, profile, total_contrib, wi
 
   if profile then
     local stats = string.format(
-      "  👥 %d followers · %d following · %d repos · %d contributions",
+      "  👥 %d followers  %d following  %d repos  %d contributions",
       profile.followers or 0, profile.following or 0,
       profile.public_repos or 0, total_contrib or 0
     )

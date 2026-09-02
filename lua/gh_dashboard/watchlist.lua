@@ -159,7 +159,7 @@ local function show_notification(repo, ev)
   local max_detail = NOTIF_WIDTH - 4
   if #detail > max_detail then detail = detail:sub(1, max_detail - 1) .. "…" end
 
-  local line1 = "  " .. icon .. label .. (age ~= "" and ("  ·  " .. age) or "")
+  local line1 = "  " .. icon .. label .. (age ~= "" and ("   " .. age) or "")
   local line2 = detail ~= "" and ("  " .. detail) or nil
 
   local buf = vim.api.nvim_create_buf(false, true)
@@ -183,7 +183,7 @@ local function show_notification(repo, ev)
     border     = "rounded",
     title      = " " .. repo .. " ",
     title_pos  = "left",
-    footer     = " <CR> expand  ·  q dismiss ",
+    footer     = " <CR> expand   q dismiss ",
     footer_pos = "center",
     focusable  = true,
     zindex     = 50,
@@ -429,7 +429,7 @@ local function open_add_input()
     border     = "rounded",
     title      = " Add repo (owner/repo) ",
     title_pos  = "center",
-    footer     = " <C-s> confirm  ·  <Esc><Esc> cancel ",
+    footer     = " <C-s> confirm   <Esc><Esc> cancel ",
     footer_pos = "center",
   })
   vim.wo[input_win].wrap       = true
@@ -541,7 +541,7 @@ local function open_manager()
     border     = "rounded",
     title      = " Watched Repos ",
     title_pos  = "center",
-    footer     = " <CR> view  ·  a add  ·  d/x remove  ·  q close ",
+    footer     = " <CR> view   a add   d/x remove   q close ",
     footer_pos = "center",
   })
   vim.wo[state.manager_win].number         = false
@@ -613,8 +613,8 @@ local function open_history_popup()
     local label = event_label(entry._ev)
     local repo  = entry._repo
     local age   = utils.age_string(entry._ev.created_at)
-    local age_part = age ~= "" and ("  ·  " .. age) or ""
-    local line  = "   " .. icon .. label .. "  ·  " .. repo .. age_part
+    local age_part = age ~= "" and ("   " .. age) or ""
+    local line  = "   " .. icon .. label .. "   " .. repo .. age_part
     local ln         = #lines
     local icon_s     = 3
     local icon_e     = icon_s + #icon
@@ -649,7 +649,7 @@ local function open_history_popup()
     border     = "rounded",
     title      = " Recent Notifications ",
     title_pos  = "center",
-    footer     = " <CR> open  ·  q close ",
+    footer     = " <CR> open   q close ",
     footer_pos = "center",
   })
   vim.api.nvim_set_option_value("winhl",

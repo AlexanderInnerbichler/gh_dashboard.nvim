@@ -112,7 +112,7 @@ local function render_comments_section(lines, hl_specs, comments)
   end
   for _, c in ipairs(comments) do
     table.insert(lines, "")
-    local meta = "  @" .. sl(c.author) .. "  ·  " .. age_string(c.created_at)
+    local meta = "  @" .. sl(c.author) .. "   " .. age_string(c.created_at)
     table.insert(lines, meta)
     table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = 0, col_e = -1 })
     table.insert(lines, "  " .. string.rep("╌", CODE_WIDTH))
@@ -131,7 +131,7 @@ local function render_review_comments_section(lines, hl_specs, review_comments)
   table.insert(hl_specs, { hl = "GhReaderSection", line = #lines - 1, col_s = 0, col_e = #header })
   for _, rc in ipairs(review_comments) do
     table.insert(lines, "")
-    local meta = "  @" .. sl(rc.login) .. "  ·  " .. sl(rc.path) .. ":" .. tostring(rc.line or "?")
+    local meta = "  @" .. sl(rc.login) .. "   " .. sl(rc.path) .. ":" .. tostring(rc.line or "?")
     table.insert(lines, meta)
     table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = 0, col_e = -1 })
     table.insert(lines, "  " .. string.rep("╌", CODE_WIDTH))
@@ -175,7 +175,7 @@ local function render_reviews_section(lines, hl_specs, reviews)
   for _, r in ipairs(with_body) do
     table.insert(lines, "")
     local state_icon = r.state == "APPROVED" and "✓" or (r.state == "CHANGES_REQUESTED" and "✗" or "·")
-    local meta = "  " .. state_icon .. " @" .. sl(r.author) .. "  ·  " .. r.state:lower():gsub("_", " ") .. "  ·  " .. age_string(r.submitted_at)
+    local meta = "  " .. state_icon .. " @" .. sl(r.author) .. "   " .. r.state:lower():gsub("_", " ") .. "   " .. age_string(r.submitted_at)
     local hl   = r.state == "APPROVED" and "GhReviewApproved" or (r.state == "CHANGES_REQUESTED" and "GhReviewChanges" or "GhReviewComment")
     table.insert(lines, meta)
     table.insert(hl_specs, { hl = hl, line = #lines - 1, col_s = 0, col_e = -1 })
@@ -204,8 +204,8 @@ function M.render_issue(data)
   table.insert(hl_specs, { hl = "GhReaderTitle", line = #lines - 1, col_s = 0, col_e = -1 })
 
   local state_tag  = " " .. data.state .. " "
-  local labels_str = #data.labels > 0 and ("  · " .. table.concat(data.labels, " · ")) or ""
-  local meta       = "  " .. state_tag .. "  @" .. sl(data.author) .. labels_str .. "  ·  " .. age_string(data.created_at)
+  local labels_str = #data.labels > 0 and ("   " .. table.concat(data.labels, "  ")) or ""
+  local meta       = "  " .. state_tag .. "  @" .. sl(data.author) .. labels_str .. "   " .. age_string(data.created_at)
   table.insert(lines, meta)
   table.insert(hl_specs, { hl = state_hl(data.state), line = #lines - 1, col_s = 2, col_e = 2 + #state_tag })
   table.insert(hl_specs, { hl = "GhReaderMeta",       line = #lines - 1, col_s = 2 + #state_tag, col_e = -1 })
@@ -218,7 +218,7 @@ function M.render_issue(data)
   render_comments_section(lines, hl_specs, data.comments)
 
   local popup_title  = "#" .. data.number .. "  " .. sl(data.title):sub(1, 55)
-  local popup_footer = "q back  ·  r refresh  ·  c comment  ·  x close issue"
+  local popup_footer = "q back   r refresh   c comment   x close issue"
   return lines, hl_specs, popup_title, popup_footer
 end
 
@@ -239,7 +239,7 @@ function M.render_pr(data, review_comments)
   table.insert(hl_specs, { hl = "GhReaderTitle", line = #lines - 1, col_s = 0, col_e = -1 })
 
   local state_tag = " " .. data.state .. " "
-  local meta      = "  " .. state_tag .. "  @" .. sl(data.author) .. "  ·  " .. age_string(data.created_at)
+  local meta      = "  " .. state_tag .. "  @" .. sl(data.author) .. "   " .. age_string(data.created_at)
   table.insert(lines, meta)
   table.insert(hl_specs, { hl = state_hl(data.state), line = #lines - 1, col_s = 2, col_e = 2 + #state_tag })
   table.insert(hl_specs, { hl = "GhReaderMeta",       line = #lines - 1, col_s = 2 + #state_tag, col_e = -1 })
@@ -349,7 +349,7 @@ function M.render_pr(data, review_comments)
   render_review_comments_section(lines, hl_specs, review_comments or {})
 
   local popup_title  = "#" .. data.number .. "  " .. sl(data.title):sub(1, 55)
-  local popup_footer = "q back  ·  r refresh  ·  c comment  ·  a review  ·  d diff  ·  m merge"
+  local popup_footer = "q back   r refresh   c comment   a review   d diff   m merge"
   return lines, hl_specs, popup_title, popup_footer
 end
 

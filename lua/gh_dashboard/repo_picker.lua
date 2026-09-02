@@ -261,7 +261,7 @@ local function open_windows()
     col        = col,
     style      = "minimal",
     border     = "rounded",
-    title      = " Search Repos  ·  type to filter  ·  <CR> search GitHub  ·  <Tab> list  ·  <Esc> close ",
+    title      = " Search Repos   type to filter   <CR> search GitHub   <Tab> list   <Esc> close ",
     title_pos  = "center",
   })
   vim.wo[state.input_win].number         = false
@@ -288,7 +288,7 @@ local function open_windows()
     border     = "rounded",
     title      = " Results ",
     title_pos  = "left",
-    footer     = " <CR> open  ·  <Tab> back to search  ·  q / <Esc> close ",
+    footer     = " <CR> open   <Tab> back to search   q / <Esc> close ",
     footer_pos = "center",
   })
   vim.wo[state.list_win].number         = false

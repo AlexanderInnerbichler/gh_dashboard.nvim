@@ -171,7 +171,7 @@ update_title = function()
   for _, item in ipairs(state.items) do
     if item.unread then unread = unread + 1 end
   end
-  local suffix = state.show_all and " · all" or ""
+  local suffix = state.show_all and " (all)" or ""
   local title  = unread > 0
     and (" GitHub Notifications  (" .. unread .. " unread)" .. suffix .. " ")
     or  (" GitHub Notifications" .. suffix .. " ")
@@ -211,7 +211,7 @@ local function open_win()
     border     = "rounded",
     title      = " GitHub Notifications ",
     title_pos  = "center",
-    footer     = " <CR> open  ·  r read  ·  m read all  ·  R refresh  ·  a toggle all  ·  q close ",
+    footer     = " <CR> open   r read   m read all   R refresh   a toggle all   q close ",
     footer_pos = "center",
   })
 

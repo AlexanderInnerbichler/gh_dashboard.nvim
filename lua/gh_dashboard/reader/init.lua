@@ -63,7 +63,7 @@ local function register_keymaps()
   bmap("c", function()
     if not state.item then return end
     local item = state.item
-    M.open_input("Write comment  |  <C-s> submit  ·  <Esc><Esc> cancel", function(body)
+    M.open_input("Write comment  |  <C-s> submit   <Esc><Esc> cancel", function(body)
       if body == "" then return end
       actions.post_comment(item, body, function(err)
         if err then
@@ -89,7 +89,7 @@ local function register_keymaps()
           ["Comment Only"]     = "comment",
         }
         local kind = kind_map[choice]
-        M.open_input(choice .. "  |  <C-s> submit  ·  <Esc><Esc> cancel", function(body)
+        M.open_input(choice .. "  |  <C-s> submit   <Esc><Esc> cancel", function(body)
           actions.submit_review(item, kind, body, function(err)
             if err then
               vim.notify("Review failed: " .. err, vim.log.levels.ERROR)
@@ -241,7 +241,7 @@ function M.open_input(hint, on_submit)
     border     = "rounded",
     title      = " " .. hint .. " ",
     title_pos  = "center",
-    footer     = " <C-s> submit  ·  q / <Esc><Esc> cancel ",
+    footer     = " <C-s> submit   q / <Esc><Esc> cancel ",
     footer_pos = "center",
   })
   vim.wo[state.input_win].number         = false
