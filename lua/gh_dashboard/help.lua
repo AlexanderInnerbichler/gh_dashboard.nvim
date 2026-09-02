@@ -31,7 +31,7 @@ local HELP = {
     { key = "]x / [x",     desc = "Next / previous review comment" },
     { key = "<Space>",     desc = "Mark viewed, jump to next unviewed" },
     { key = "u",           desc = "Jump to next unviewed file" },
-    { key = "x",           desc = "Toggle side-by-side / unified" },
+    { key = "s",           desc = "Toggle side-by-side / unified split" },
     { key = "c",           desc = "Queue review comment (line or visual range)" },
     { key = "A",           desc = "Submit review with queued comments" },
     { key = "D",           desc = "Discard queued comments" },
@@ -42,13 +42,14 @@ local HELP = {
     { key = "zo / zc",     desc = "Open / close fold (zR / zM for all)" },
     { key = "<C-h>",       desc = "Reopen the file picker" },
     { key = "r",           desc = "Refresh" },
-    { key = "q",           desc = "Back to picker (from the picker, close)" },
+    { key = "q / <Esc>",   desc = "Back to picker (from the picker, close)" },
     { key = "?",           desc = "Toggle this help" },
   },
   notifications = {
     { key = "<CR> / o",    desc = "Open notification in reader" },
-    { key = "r",           desc = "Mark as read" },
-    { key = "R",           desc = "Refresh" },
+    { key = "x",           desc = "Mark as read" },
+    { key = "X",           desc = "Mark all as read" },
+    { key = "r",           desc = "Refresh" },
     { key = "a",           desc = "Toggle all / unread only" },
     { key = "q / <Esc>",   desc = "Close" },
     { key = "?",           desc = "Toggle this help" },
@@ -68,6 +69,10 @@ local HELP = {
 }
 
 -- ── state ──────────────────────────────────────────────────────────────────
+
+-- Same key, same meaning, everywhere: <CR>/o opens, q/<Esc> goes back,
+-- r refreshes, x dismisses the item under the cursor, ? is this popup.
+local LEGEND = "<CR>/o open    q/<Esc> back    r refresh    x dismiss"
 
 local state = { buf = nil, win = nil, context = nil }
 
@@ -97,8 +102,10 @@ local function open(context)
     table.insert(lines, "  " .. e.key .. padding .. "   " .. e.desc)
   end
   table.insert(lines, "")
+  table.insert(lines, "  " .. LEGEND)
+  table.insert(lines, "")
 
-  local win_w  = math.max(key_w + 20, 36)
+  local win_w  = math.max(key_w + 20, #LEGEND + 4)
   local win_h  = #lines
   local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
   local row    = math.floor((ui.height - win_h) / 2)

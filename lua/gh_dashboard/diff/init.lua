@@ -715,6 +715,7 @@ end
 
 local function register_keymaps()
   map_all("q",         function() open_picker() end)
+  map_all("<Esc>",     function() open_picker() end)
   map_all("<Tab>",     function() goto_file(1) end)
   map_all("<S-Tab>",   function() goto_file(-1) end)
   map_all("]f",        function() goto_file(1) end)
@@ -742,7 +743,7 @@ local function register_keymaps()
         if f then draw_comments(f) end
       end)
   end)
-  map_all("x", function()
+  map_all("s", function()
     state.layout = state.layout == "unified" and "side_by_side" or "unified"
     apply_layout()
     register_keymaps()

@@ -122,7 +122,7 @@ the repo from the working directory; `:GhDiff 42 owner/repo` targets any repo.
 | `]x` / `[x` | Next / previous review comment |
 | `<Space>` | Mark viewed, jump to next unviewed |
 | `u` | Jump to next unviewed file |
-| `x` | Toggle side-by-side / unified |
+| `s` | Toggle side-by-side / unified split |
 | `c` | Queue a review comment (normal line or visual range) |
 | `A` | Submit review with all queued comments |
 | `D` | Discard queued comments |
@@ -166,6 +166,20 @@ panel instead of being dropped.
 ## Notifications
 
 `:GhNotifications` / `<leader>gn` opens the full notification list. Unread count is shown in the dashboard header. Background polling fires toast notifications for new events on your watchlist.
+
+## Keys
+
+The same key means the same thing in every view:
+
+| Key | Everywhere |
+|-----|------------|
+| `<CR>` / `o` | Open the item under the cursor |
+| `q` / `<Esc>` | Back one level, or close at the top |
+| `r` | Refresh |
+| `x` | Dismiss the item under the cursor (unwatch a repo, mark a notification read, close an issue) |
+| `a` | Add (watchlists) |
+| `d` | Open a diff. Never destructive. |
+| `?` | Keys for the current view |
 
 ## Commands
 

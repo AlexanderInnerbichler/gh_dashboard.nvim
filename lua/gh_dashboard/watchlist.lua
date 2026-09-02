@@ -180,7 +180,7 @@ local function show_notification(repo, ev)
     border     = "rounded",
     title      = " " .. repo .. " ",
     title_pos  = "left",
-    footer     = " <CR> expand   q dismiss ",
+    footer     = " <CR>/o expand   q dismiss ",
     footer_pos = "center",
     focusable  = true,
     zindex     = 50,
@@ -199,6 +199,8 @@ local function show_notification(repo, ev)
   end
 
   vim.keymap.set("n", "<CR>",  function() close_notif(); open_event(repo, ev) end,
+    { buffer = buf, nowait = true, silent = true })
+  vim.keymap.set("n", "o"   ,  function() close_notif(); open_event(repo, ev) end,
     { buffer = buf, nowait = true, silent = true })
   vim.keymap.set("n", "q",     close_notif, { buffer = buf, nowait = true, silent = true })
   vim.keymap.set("n", "<Esc>", close_notif, { buffer = buf, nowait = true, silent = true })
@@ -459,7 +461,7 @@ local function open_manager()
   state.manager_win = utils.float(state.manager_buf, {
     cursorline = true,
     title  = " Watched Repos ",
-    footer = " <CR> view   a add   d/x remove   q close ",
+    footer = " <CR>/o view   a add   x remove   q close ",
   })
 
   render_manager()
@@ -469,8 +471,8 @@ local function open_manager()
     vim.keymap.set("n", lhs, fn, { buffer = state.manager_buf, nowait = true, silent = true })
   end
   bmap("<CR>",  open_repo_at_cursor)
+  bmap("o",     open_repo_at_cursor)
   bmap("a",     open_add_input)
-  bmap("d",     remove_at_cursor)
   bmap("x",     remove_at_cursor)
   bmap("q",     close_manager)
   bmap("<Esc>", close_manager)
@@ -548,7 +550,7 @@ local function open_history_popup()
   local win = utils.float(buf, {
     w = 0.70, h = 0.50, cursorline = true,
     title  = " Recent Notifications ",
-    footer = " <CR> open   q close ",
+    footer = " <CR>/o open   q close ",
   })
   vim.api.nvim_set_option_value("winhl",
     "FloatTitle:GhWatchTitle,FloatBorder:GhWatchSep", { win = win })
@@ -568,6 +570,7 @@ local function open_history_popup()
   end
 
   bmap("<CR>",  open_at_cursor)
+  bmap("o",     open_at_cursor)
   bmap("q",     function() if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, false) end end)
   bmap("<Esc>", function() if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, false) end end)
 end

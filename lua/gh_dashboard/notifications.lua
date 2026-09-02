@@ -193,7 +193,7 @@ local function open_win()
   state.win = utils.float(state.buf, {
     w = 0.80, h = 0.70, cursorline = true,
     title  = " GitHub Notifications ",
-    footer = " <CR> open   r read   m read all   R refresh   a toggle all   q close ",
+    footer = " <CR>/o open   x read   X read all   r refresh   a all/unread   q close ",
   })
 
   local function bmap(lhs, fn)
@@ -221,7 +221,9 @@ local function open_win()
   bmap("<CR>", open_at_cursor)
   bmap("o",    open_at_cursor)
 
-  bmap("r", function()
+  -- x dismisses one item, X dismisses all, matching every other view;
+  -- r stays refresh, which is what it means everywhere else.
+  bmap("x", function()
     local item = item_at_cursor()
     if not item or not item.unread or item.id == "" then return end
     mark_read(item.id, function(err)
@@ -234,7 +236,7 @@ local function open_win()
     end)
   end)
 
-  bmap("m", function()
+  bmap("X", function()
     local unreads = {}
     for _, item in ipairs(state.items) do
       if item.unread and item.id ~= "" then
@@ -254,7 +256,7 @@ local function open_win()
     end
   end)
 
-  bmap("R", fetch)
+  bmap("r", fetch)
 
   bmap("a", function()
     state.show_all = not state.show_all

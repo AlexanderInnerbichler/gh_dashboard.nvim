@@ -118,7 +118,7 @@ local function open_manager()
   state.manager_win = utils.float(state.manager_buf, {
     w = 0.70, h = 0.50, cursorline = true,
     title  = " Watched Users ",
-    footer = " a add   d/x remove   <CR> profile   q close ",
+    footer = " <CR>/o profile   a add   x remove   q close ",
   })
 
   render_manager()
@@ -127,11 +127,18 @@ local function open_manager()
     vim.keymap.set("n", lhs, fn, { buffer = state.manager_buf, nowait = true, silent = true })
   end
   bmap("a",     open_add_input)
-  bmap("d",     remove_at_cursor)
   bmap("x",     remove_at_cursor)
   bmap("q",     close_manager)
   bmap("<Esc>", close_manager)
   bmap("<CR>", function()
+    if not state.manager_win or not vim.api.nvim_win_is_valid(state.manager_win) then return end
+    local cur = vim.api.nvim_win_get_cursor(state.manager_win)[1]
+    local idx = cur - 1  -- line 1 = "", line 2 = first user
+    if idx >= 1 and idx <= #state.users then
+      require("gh_dashboard.user_profile").open(state.users[idx])
+    end
+  end)
+  bmap("o", function()
     if not state.manager_win or not vim.api.nvim_win_is_valid(state.manager_win) then return end
     local cur = vim.api.nvim_win_get_cursor(state.manager_win)[1]
     local idx = cur - 1  -- line 1 = "", line 2 = first user
