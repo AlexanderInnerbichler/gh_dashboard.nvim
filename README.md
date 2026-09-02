@@ -101,6 +101,9 @@ changed file with its status, `+`/`−` counts and a bar scaled to the largest f
 Files load lazily — one request for the whole file list, then one blob per file as you open
 it, with the next file prefetched in the background.
 
+The most-used keys sit in the winbar above the diff, trimmed to whatever the window fits;
+`?` lists all of them.
+
 `:GhDiff` with no argument diffs the pull request for the current branch. `:GhDiff 42` infers
 the repo from the working directory; `:GhDiff 42 owner/repo` targets any repo.
 

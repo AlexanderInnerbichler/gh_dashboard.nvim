@@ -270,18 +270,39 @@ local function render_panel()
   end
 end
 
+--- The keys worth knowing, longest set that fits. A split layout has no
+--- floating-window footer, so the winbar is the only pinned place for them.
+local HINT_TIERS = {
+  "<Tab> file · ]h hunk · <Spc> viewed · c comment · A submit · x unified · ? help",
+  "<Tab> file · ]h hunk · <Spc> viewed · c comment · A submit · ? help",
+  "<Tab> file · ]h hunk · <Spc> viewed · c comment · ? help",
+  "<Tab> file · <Spc> viewed · c comment · ? help",
+  "<Spc> viewed · c comment · ? help",
+  "? help",
+}
+
+local function hints_for(avail)
+  for _, tier in ipairs(HINT_TIERS) do
+    if vim.fn.strdisplaywidth(tier) <= avail then return tier end
+  end
+  return ""
+end
+
 --- Per-window headers. winbar rather than statusline, because a window-local
 --- statusline never renders under laststatus=3.
 local function set_titles(f)
   if not is_open() then return end
   if not (state.head_win and vim.api.nvim_win_is_valid(state.head_win)) then return end
 
-  local label = f and f.path or "no file"
-  if f and f.prev then label = f.prev .. " → " .. f.path end
-  label = label:gsub("%%", "%%%%")
+  local raw = f and f.path or "no file"
+  if f and f.prev then raw = f.prev .. " → " .. f.path end
 
-  local side = state.layout == "unified" and "unified" or "head"
-  vim.wo[state.head_win].winbar = "%#GhDiffWinbar# " .. label .. " %#GhDiffWinbarDim#%=" .. side .. " "
+  -- "head" / "unified" was redundant (one pane vs two says it), so the right
+  -- side of this winbar is free for the key hints.
+  local avail = vim.api.nvim_win_get_width(state.head_win)
+                - vim.fn.strdisplaywidth(raw) - 4
+  vim.wo[state.head_win].winbar = "%#GhDiffWinbar# " .. raw:gsub("%%", "%%%%")
+    .. " %#GhDiffWinbarDim#%=" .. hints_for(avail) .. " "
 
   if state.base_win and vim.api.nvim_win_is_valid(state.base_win) then
     local base_ref = state.meta and state.meta.base_ref or ""
@@ -289,7 +310,7 @@ local function set_titles(f)
       (base_ref ~= "" and ("  " .. base_ref:gsub("%%", "%%%%")) or "") .. "%="
   end
   if state.panel_win and vim.api.nvim_win_is_valid(state.panel_win) then
-    vim.wo[state.panel_win].winbar = "%#GhDiffWinbarDim# files%="
+    vim.wo[state.panel_win].winbar = "%#GhDiffWinbarDim# files%=? help "
   end
 end
 
@@ -782,7 +803,11 @@ local function setup_autocmds()
 
   vim.api.nvim_create_autocmd("VimResized", {
     group    = group,
-    callback = function() if is_open() then size_windows() end end,
+    callback = function()
+      if not is_open() then return end
+      size_windows()
+      set_titles(state.visible[state.index])
+    end,
   })
 
   vim.api.nvim_create_autocmd("TabClosed", {
