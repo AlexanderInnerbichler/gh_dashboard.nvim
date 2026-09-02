@@ -616,18 +616,16 @@ local function add_comment(mode)
     return
   end
   vim.schedule(function()
-    require("gh_dashboard.reader").open_input(
-      "Review comment  |  <C-s> queue   <Esc><Esc> cancel",
-      function(body)
-        if body == "" then return end
-        review.add(vim.tbl_extend("force", target, { body = body, login = "you" }))
-        local f = state.visible[state.index]
-        if f then draw_comments(f) end
-        render_panel()
-        vim.notify(string.format("Queued (%d pending) — press A to submit", #review.all()),
-                   vim.log.levels.INFO)
-      end
-    )
+    utils.prompt({ title = "Review comment", lines = 12,
+                   footer = " <C-s> queue   <Esc> then <Esc> cancel" }, function(body)
+      if body == "" then return end
+      review.add(vim.tbl_extend("force", target, { body = body, login = "you" }))
+      local f = state.visible[state.index]
+      if f then draw_comments(f) end
+      render_panel()
+      vim.notify(string.format("Queued (%d pending) — press A to submit", #review.all()),
+                 vim.log.levels.INFO)
+    end)
   end)
 end
 
@@ -642,29 +640,26 @@ local function submit_review()
       local event = choice == "Approve" and "APPROVE"
                  or choice == "Request Changes" and "REQUEST_CHANGES"
                  or "COMMENT"
-      require("gh_dashboard.reader").open_input(
-        choice .. " — summary  |  <C-s> submit   <Esc><Esc> cancel",
-        function(body)
-          if event == "COMMENT" and body == "" and #pending == 0 then
-            vim.notify("Nothing to submit", vim.log.levels.WARN)
+      utils.prompt({ title = choice .. " — summary", lines = 12 }, function(body)
+        if event == "COMMENT" and body == "" and #pending == 0 then
+          vim.notify("Nothing to submit", vim.log.levels.WARN)
+          return
+        end
+        review.submit(state.item.number, state.item.repo, state.meta.head_sha,
+                      event, body, function(err)
+          if err then
+            vim.notify("Review failed: " .. err, vim.log.levels.ERROR)
             return
           end
-          review.submit(state.item.number, state.item.repo, state.meta.head_sha,
-                        event, body, function(err)
-            if err then
-              vim.notify("Review failed: " .. err, vim.log.levels.ERROR)
-              return
-            end
-            vim.notify("Review submitted", vim.log.levels.INFO)
-            fetch.fetch_review_comments(state.item.number, state.item.repo, function(list)
-              state.comments = list
-              render_panel()
-              local f = state.visible[state.index]
-              if f then draw_comments(f) end
-            end)
+          vim.notify("Review submitted", vim.log.levels.INFO)
+          fetch.fetch_review_comments(state.item.number, state.item.repo, function(list)
+            state.comments = list
+            render_panel()
+            local f = state.visible[state.index]
+            if f then draw_comments(f) end
           end)
-        end
-      )
+        end)
+      end)
     end
   )
 end

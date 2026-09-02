@@ -13,8 +13,6 @@ local state = {
   win           = nil,
   item          = nil,
   data          = nil,
-  input_buf     = nil,
-  input_win     = nil,
 }
 
 -- ── namespace ──────────────────────────────────────────────────────────────
@@ -36,14 +34,6 @@ local function close_popup()
   end
 end
 
-local function close_input()
-  if state.input_win and vim.api.nvim_win_is_valid(state.input_win) then
-    vim.api.nvim_win_close(state.input_win, false)
-    state.input_win = nil
-    state.input_buf = nil
-    vim.cmd("stopinsert")
-  end
-end
 
 local sl = utils.sl
 
@@ -63,7 +53,7 @@ local function register_keymaps()
   bmap("c", function()
     if not state.item then return end
     local item = state.item
-    M.open_input("Write comment  |  <C-s> submit   <Esc><Esc> cancel", function(body)
+    utils.prompt({ title = "Write comment", lines = 12 }, function(body)
       if body == "" then return end
       actions.post_comment(item, body, function(err)
         if err then
@@ -89,7 +79,7 @@ local function register_keymaps()
           ["Comment Only"]     = "comment",
         }
         local kind = kind_map[choice]
-        M.open_input(choice .. "  |  <C-s> submit   <Esc><Esc> cancel", function(body)
+        utils.prompt({ title = choice, lines = 12 }, function(body)
           actions.submit_review(item, kind, body, function(err)
             if err then
               vim.notify("Review failed: " .. err, vim.log.levels.ERROR)
@@ -214,70 +204,6 @@ end
 
 -- ── input buffer ───────────────────────────────────────────────────────────
 
-function M.open_input(hint, on_submit)
-  close_input()
-
-  state.input_buf = vim.api.nvim_create_buf(false, true)
-  vim.b[state.input_buf].render_markdown = { enabled = false }
-  vim.bo[state.input_buf].buftype   = "nofile"
-  vim.bo[state.input_buf].bufhidden = "wipe"
-  vim.bo[state.input_buf].filetype  = "text"
-
-  vim.api.nvim_buf_set_lines(state.input_buf, 0, -1, false, { "", "" })
-
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.60)
-  local height = 12
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  state.input_win = vim.api.nvim_open_win(state.input_buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " " .. hint .. " ",
-    title_pos  = "center",
-    footer     = " <C-s> submit   q / <Esc><Esc> cancel ",
-    footer_pos = "center",
-  })
-  vim.wo[state.input_win].number         = false
-  vim.wo[state.input_win].relativenumber = false
-  vim.wo[state.input_win].signcolumn     = "no"
-  vim.wo[state.input_win].wrap           = true
-  vim.wo[state.input_win].linebreak      = true
-  vim.wo[state.input_win].foldenable     = false
-
-  vim.api.nvim_win_set_cursor(state.input_win, { 1, 0 })
-  vim.cmd("startinsert")
-
-  local function do_submit()
-    local all_lines = vim.api.nvim_buf_get_lines(state.input_buf, 0, -1, false)
-    local body = table.concat(all_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
-    close_input()
-    on_submit(body)
-  end
-
-  local function imap(mode, lhs, fn)
-    vim.keymap.set(mode, lhs, fn, { buffer = state.input_buf, nowait = true, silent = true })
-  end
-  imap("n", "<C-s>",      do_submit)
-  imap("i", "<C-s>",      do_submit)
-  imap("n", "<Esc><Esc>", close_input)
-  imap("n", "q",          close_input)
-
-  vim.api.nvim_create_autocmd("BufWipeout", {
-    buffer   = state.input_buf,
-    once     = true,
-    callback = function()
-      state.input_buf = nil
-      state.input_win = nil
-    end,
-  })
-end
 
 -- ── public API ─────────────────────────────────────────────────────────────
 

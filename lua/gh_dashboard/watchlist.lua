@@ -406,49 +406,8 @@ local function close_manager()
 end
 
 local function open_add_input()
-  local input_buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[input_buf].buftype   = "nofile"
-  vim.bo[input_buf].bufhidden = "wipe"
-  vim.bo[input_buf].filetype  = "text"
-
-  vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "", "" })
-
-  local ui    = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width = math.floor(ui.width * 0.50)
-  local height = 5
-  local row   = math.floor((ui.height - height) / 2)
-  local col   = math.floor((ui.width  - width)  / 2)
-
-  local input_win = vim.api.nvim_open_win(input_buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " Add repo (owner/repo) ",
-    title_pos  = "center",
-    footer     = " <C-s> confirm   <Esc><Esc> cancel ",
-    footer_pos = "center",
-  })
-  vim.wo[input_win].wrap       = true
-  vim.wo[input_win].foldenable = false
-
-  vim.api.nvim_win_set_cursor(input_win, { 1, 0 })
-  vim.cmd("startinsert")
-
-  local function do_cancel()
-    if vim.api.nvim_win_is_valid(input_win) then
-      vim.api.nvim_win_close(input_win, true)
-    end
-  end
-
-  local function do_confirm()
-    local text = vim.trim(vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
-    if vim.api.nvim_win_is_valid(input_win) then
-      vim.api.nvim_win_close(input_win, true)
-    end
+  utils.prompt({ title = "Add repo (owner/repo)", w = 0.5,
+                 footer = " <C-s> confirm   <Esc> cancel" }, function(text)
     if text == "" then return end
     local owner, repo = text:match("^([^/]+)/([^/]+)$")
     if not owner or not repo then
@@ -469,19 +428,7 @@ local function open_add_input()
       local lines = vim.api.nvim_buf_get_lines(state.manager_buf, 0, -1, false)
       vim.api.nvim_win_set_cursor(state.manager_win, { math.max(1, #lines - 1), 0 })
     end
-  end
-
-  local function imap(mode, lhs, fn)
-    vim.keymap.set(mode, lhs, fn, { buffer = input_buf, nowait = true, silent = true })
-  end
-  imap("n", "<C-s>", do_confirm)
-  imap("i", "<C-s>", do_confirm)
-  imap("n", "<Esc><Esc>", do_cancel)
-
-  vim.api.nvim_create_autocmd("BufWipeout", {
-    buffer = input_buf, once = true,
-    callback = function() end,
-  })
+  end)
 end
 
 local function remove_at_cursor()

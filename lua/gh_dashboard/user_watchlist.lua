@@ -72,46 +72,8 @@ local function close_manager()
 end
 
 local function open_add_input()
-  local input_buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[input_buf].buftype    = "nofile"
-  vim.bo[input_buf].bufhidden  = "wipe"
-  vim.bo[input_buf].modifiable = true
-  vim.bo[input_buf].filetype   = "text"
-
-  local ui    = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width = 40
-  local row   = math.floor(ui.height / 2)
-  local col   = math.floor((ui.width - width) / 2)
-
-  local input_win = vim.api.nvim_open_win(input_buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = 1,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " Add GitHub username ",
-    title_pos  = "center",
-    footer     = " <C-s> confirm   <Esc><Esc> cancel ",
-    footer_pos = "center",
-  })
-  vim.wo[input_win].wrap       = true
-  vim.wo[input_win].foldenable = false
-  vim.api.nvim_win_set_cursor(input_win, { 1, 0 })
-  vim.cmd("startinsert")
-
-  local function do_cancel()
-    if vim.api.nvim_win_is_valid(input_win) then
-      vim.api.nvim_win_close(input_win, true)
-    end
-  end
-
-  local function do_confirm()
-    local text = vim.trim(vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
-    if vim.api.nvim_win_is_valid(input_win) then
-      vim.api.nvim_win_close(input_win, true)
-    end
+  utils.prompt({ title = "Add GitHub username", width = 40,
+                 footer = " <C-s> confirm   <Esc> cancel" }, function(text)
     if text == "" then return end
     if text:find("/") then
       vim.notify("Enter a bare username, not owner/repo", vim.log.levels.WARN)
@@ -130,14 +92,7 @@ local function open_add_input()
       local lines = vim.api.nvim_buf_get_lines(state.manager_buf, 0, -1, false)
       vim.api.nvim_win_set_cursor(state.manager_win, { math.max(1, #lines - 1), 0 })
     end
-  end
-
-  local function imap(mode, lhs, fn)
-    vim.keymap.set(mode, lhs, fn, { buffer = input_buf, nowait = true, silent = true })
-  end
-  imap("n", "<C-s>", do_confirm)
-  imap("i", "<C-s>", do_confirm)
-  imap("n", "<Esc><Esc>", do_cancel)
+  end)
 end
 
 local function remove_at_cursor()
