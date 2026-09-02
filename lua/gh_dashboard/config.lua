@@ -12,7 +12,7 @@ local defaults = {
   feed_events_per_source = 20,
   diff                   = {
     layout          = "side_by_side",  -- or "unified"
-    panel_width     = 36,
+    picker_width    = 0.6,
     context         = 6,
     auto_preview    = true,
     hide_generated  = true,
@@ -41,7 +41,7 @@ local function validate(opts)
       opts[k] = defaults[k]
     end
   end
-  for _, k in ipairs({ "panel_width", "context" }) do
+  for _, k in ipairs({ "picker_width", "context" }) do
     if type(opts.diff[k]) ~= "number" then
       vim.notify(
         string.format("gh_dashboard: config.diff.%s must be a number (got %s)", k, type(opts.diff[k])),

@@ -104,10 +104,6 @@ function M.render(ctx)
     return #lines - 1
   end
 
-  add("")
-  add("  PR #" .. ctx.number, "GhReaderTitle")
-  add("  " .. utils.trunc(ctx.repo, width - 4), "GhReaderBreadcrumb")
-
   local total_add, total_del, max_change = 0, 0, 0
   for _, f in ipairs(ctx.files) do
     total_add, total_del = total_add + f.add, total_del + f.del
@@ -115,32 +111,23 @@ function M.render(ctx)
   end
 
   do
-    local stat = string.format("  %d files  +%d  −%d", #ctx.files, total_add, total_del)
-    local ln   = add(stat)
-    local plus = stat:find("%+")
-    local minus = stat:find("−")
-    table.insert(hl_specs, { hl = "GhReaderMeta",  line = ln, col_s = 0,        col_e = plus - 1 })
-    table.insert(hl_specs, { hl = "GhDiffAdd",     line = ln, col_s = plus - 1, col_e = minus - 1 })
-    table.insert(hl_specs, { hl = "GhDiffDel",     line = ln, col_s = minus - 1, col_e = -1 })
+    local notes = {}
+    if ctx.filter ~= ""    then table.insert(notes, "/" .. ctx.filter) end
+    if ctx.hide_generated  then table.insert(notes, "no-gen")          end
+    if ctx.skip_whitespace then table.insert(notes, "no-ws")           end
+    table.insert(notes, ctx.sort)
+    if #ctx.pending > 0 then
+      table.insert(notes, string.format("%d pending", #ctx.pending))
+    end
+    local right = table.concat(notes, " · ")
+    local left  = string.format("  %d files  +%d  −%d", #ctx.files, total_add, total_del)
+    local ln    = add(utils.dpad(left, math.max(0, width - #right - 2)) .. right)
+    local plus, minus = left:find("%+"), left:find("−")
+    table.insert(hl_specs, { hl = "GhReaderMeta", line = ln, col_s = 0,          col_e = plus - 1 })
+    table.insert(hl_specs, { hl = "GhDiffAdd",    line = ln, col_s = plus - 1,   col_e = minus - 1 })
+    table.insert(hl_specs, { hl = "GhDiffDel",    line = ln, col_s = minus - 1,  col_e = #left })
+    table.insert(hl_specs, { hl = "GhReaderMeta", line = ln, col_s = #left,      col_e = -1 })
   end
-
-  local viewed_n = 0
-  for _, f in ipairs(ctx.files) do
-    if ctx.viewed[f.path] then viewed_n = viewed_n + 1 end
-  end
-  add(string.format("  %d/%d viewed", viewed_n, #ctx.files), "GhDiffViewed")
-
-  if #ctx.pending > 0 then
-    add(string.format("  %d pending comment%s", #ctx.pending, #ctx.pending == 1 and "" or "s"),
-        "GhDiffCommentPending")
-  end
-
-  local notes = {}
-  if ctx.filter ~= ""     then table.insert(notes, "/" .. ctx.filter) end
-  if ctx.hide_generated   then table.insert(notes, "no-gen")          end
-  if ctx.skip_whitespace  then table.insert(notes, "no-ws")           end
-  table.insert(notes, ctx.sort)
-  add("  " .. table.concat(notes, " · "), "GhReaderMeta")
 
   add(string.rep("─", width), "GhReaderSep")
 
@@ -150,49 +137,50 @@ function M.render(ctx)
     return lines, hl_specs, row_map
   end
 
+  -- one line per file: the picker is wide, so vertical space is the scarce axis
+  local counts_w = 14
+  local name_w   = math.max(16, width - 7 - counts_w - BAR_W - 2)
+
   for i, f in ipairs(ctx.visible) do
     local mark   = ctx.viewed[f.path] and "✓" or " "
     local status = STATUS_CHAR[f.status] or "?"
-    local avail  = width - 8
-    local shown  = fit_path(f.path, avail)
+    local prefix = "  " .. mark .. " " .. status .. "  "
 
-    local prefix = "  " .. mark .. " " .. status .. " "
-    local ln = add(prefix .. shown)
+    local shown  = utils.dpad(utils.dtrunc(f.path, name_w), name_w)
+    local counts = utils.dpad(string.format("+%-5d −%-5d", f.add, f.del), counts_w)
+    local graph, n_add = bar(f.add, f.del, max_change)
+
+    local ln = add(prefix .. shown .. counts .. graph)
     row_map[ln] = i
 
-    table.insert(hl_specs, { hl = "GhDiffViewed", line = ln, col_s = 2, col_e = 3 })
+    table.insert(hl_specs, { hl = "GhDiffViewed", line = ln, col_s = 2, col_e = 5 })
     table.insert(hl_specs, {
-      hl = STATUS_HL[status] or "GhReaderMeta", line = ln, col_s = 4, col_e = 5,
+      hl = STATUS_HL[status] or "GhReaderMeta", line = ln, col_s = 5, col_e = 6,
     })
 
-    local slash = shown:match(".*()/")
+    local name_s = #prefix
+    local slash  = shown:match(".*()/")
     if slash then
-      table.insert(hl_specs, { hl = "GhDiffPanelDir",  line = ln, col_s = #prefix, col_e = #prefix + slash })
-      table.insert(hl_specs, { hl = "GhDiffPanelPath", line = ln, col_s = #prefix + slash, col_e = -1 })
+      table.insert(hl_specs, { hl = "GhDiffPanelDir",  line = ln, col_s = name_s, col_e = name_s + slash })
+      table.insert(hl_specs, { hl = "GhDiffPanelPath", line = ln, col_s = name_s + slash, col_e = name_s + #shown })
     else
-      table.insert(hl_specs, { hl = "GhDiffPanelPath", line = ln, col_s = #prefix, col_e = -1 })
+      table.insert(hl_specs, { hl = "GhDiffPanelPath", line = ln, col_s = name_s, col_e = name_s + #shown })
     end
 
-    local graph, n_add = bar(f.add, f.del, max_change)
-    local counts = string.format("      +%-5d −%-5d ", f.add, f.del)
-    local ln2 = add(counts .. graph)
-    row_map[ln2] = i
-
-    local plus  = counts:find("%+")
+    local c_s   = name_s + #shown
     local minus = counts:find("−")
-    table.insert(hl_specs, { hl = "GhDiffAdd", line = ln2, col_s = plus - 1,  col_e = minus - 1 })
-    table.insert(hl_specs, { hl = "GhDiffDel", line = ln2, col_s = minus - 1, col_e = #counts })
-    local bar_s = #counts
-    table.insert(hl_specs, { hl = "GhDiffBarAdd", line = ln2, col_s = bar_s, col_e = bar_s + n_add * #FULL })
-    table.insert(hl_specs, { hl = "GhDiffBarDel", line = ln2, col_s = bar_s + n_add * #FULL, col_e = -1 })
+    table.insert(hl_specs, { hl = "GhDiffAdd", line = ln, col_s = c_s, col_e = c_s + minus - 1 })
+    table.insert(hl_specs, { hl = "GhDiffDel", line = ln, col_s = c_s + minus - 1, col_e = c_s + #counts })
+    local bar_s = c_s + #counts
+    table.insert(hl_specs, { hl = "GhDiffBarAdd", line = ln, col_s = bar_s, col_e = bar_s + n_add * #FULL })
+    table.insert(hl_specs, { hl = "GhDiffBarDel", line = ln, col_s = bar_s + n_add * #FULL, col_e = -1 })
 
     if ctx.comments_by_path[f.path] then
-      local n   = #ctx.comments_by_path[f.path]
-      local tag = string.format(" %d ", n)
-      lines[ln2 + 1] = lines[ln2 + 1] .. "  " .. tag
+      local tag = "  ●" .. #ctx.comments_by_path[f.path]
+      lines[ln + 1] = lines[ln + 1] .. tag
       table.insert(hl_specs, {
-        hl = "GhDiffCommentAuthor", line = ln2,
-        col_s = #(counts .. graph) + 2, col_e = -1,
+        hl = "GhDiffCommentAuthor", line = ln,
+        col_s = #(prefix .. shown .. counts .. graph), col_e = -1,
       })
     end
   end

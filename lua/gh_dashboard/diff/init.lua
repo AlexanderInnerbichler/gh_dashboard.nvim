@@ -21,7 +21,8 @@ local state = {}
 local function reset_state()
   state = {
     tab            = nil,
-    panel_win      = nil, panel_buf = nil,
+    picker_win     = nil, panel_buf = nil,
+    picker_width   = 0,
     base_win       = nil, base_buf  = nil,
     head_win       = nil, head_buf  = nil,
     item           = nil,
@@ -141,53 +142,29 @@ local function diff_wins()
 end
 
 local function size_windows()
-  if not (state.panel_win and vim.api.nvim_win_is_valid(state.panel_win)) then return end
-  local width = opts().panel_width
-  vim.api.nvim_win_set_width(state.panel_win, width)
-  vim.wo[state.panel_win].winfixwidth = true
   local wins = diff_wins()
   if #wins == 2 then
-    local total = vim.o.columns - width - 2
-    vim.api.nvim_win_set_width(wins[1], math.floor(total / 2))
+    vim.api.nvim_win_set_width(wins[1], math.floor((vim.o.columns - 1) / 2))
   end
-end
-
-local function apply_panel_win_opts()
-  local w = state.panel_win
-  vim.wo[w].number         = false
-  vim.wo[w].relativenumber = false
-  vim.wo[w].signcolumn     = "no"
-  vim.wo[w].wrap           = false
-  vim.wo[w].cursorline     = true
-  vim.wo[w].foldenable     = false
-  vim.wo[w].list           = false
-  vim.wo[w].winfixwidth    = true
-  vim.wo[w].statuscolumn   = ""
 end
 
 local function build_layout()
   vim.cmd("tabnew")
   -- tabnew hands us an empty buffer we immediately replace; drop it so the
   -- buffer list doesn't collect one [No Name] per open.
-  local scratch   = vim.api.nvim_get_current_buf()
-  state.tab       = vim.api.nvim_get_current_tabpage()
-  state.panel_win = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(state.panel_win, state.panel_buf)
+  local scratch  = vim.api.nvim_get_current_buf()
+  state.tab      = vim.api.nvim_get_current_tabpage()
+  state.base_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(state.base_win, state.base_buf)
   if vim.api.nvim_buf_is_valid(scratch) and vim.api.nvim_buf_get_name(scratch) == "" then
     pcall(vim.api.nvim_buf_delete, scratch, { force = true })
   end
-  apply_panel_win_opts()
-
-  vim.cmd("vertical rightbelow split")
-  state.base_win = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(state.base_win, state.base_buf)
 
   vim.cmd("vertical rightbelow split")
   state.head_win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.head_win, state.head_buf)
 
   size_windows()
-  vim.api.nvim_set_current_win(state.panel_win)
 end
 
 --- Add or drop the base window so the window count matches the current layout.
@@ -209,6 +186,26 @@ local function apply_layout()
     vim.api.nvim_win_set_buf(state.base_win, state.base_buf)
   end
   size_windows()
+end
+
+-- ── file picker ────────────────────────────────────────────────────────────
+
+local function picker_open()
+  return state.picker_win and vim.api.nvim_win_is_valid(state.picker_win)
+end
+
+local function picker_title()
+  local viewed_n = 0
+  for _, f in ipairs(state.files) do
+    if state.viewed[f.path] then viewed_n = viewed_n + 1 end
+  end
+  return string.format(" PR #%d  ·  %s  ·  %d/%d viewed ",
+    state.item.number, state.item.repo, viewed_n, #state.files)
+end
+
+local function close_picker()
+  if picker_open() then vim.api.nvim_win_close(state.picker_win, true) end
+  state.picker_win = nil
 end
 
 -- ── panel rendering ────────────────────────────────────────────────────────
@@ -240,7 +237,7 @@ local function render_panel()
   local lines, hl_specs, row_map = panel.render({
     number           = state.item.number,
     repo             = state.item.repo,
-    width            = opts().panel_width,
+    width            = state.picker_width,
     files            = state.files,
     visible          = state.visible,
     viewed           = state.viewed,
@@ -262,10 +259,14 @@ local function render_panel()
     end
   end
 
+  if picker_open() then
+    pcall(vim.api.nvim_win_set_config, state.picker_win, { title = picker_title() })
+  end
+
   local target = state.line_of_index[state.index]
-  if target and state.panel_win and vim.api.nvim_win_is_valid(state.panel_win) then
+  if target and picker_open() then
     state.syncing = true
-    pcall(vim.api.nvim_win_set_cursor, state.panel_win, { target + 1, 0 })
+    pcall(vim.api.nvim_win_set_cursor, state.picker_win, { target + 1, 0 })
     vim.schedule(function() state.syncing = false end)
   end
 end
@@ -273,12 +274,12 @@ end
 --- The keys worth knowing, longest set that fits. A split layout has no
 --- floating-window footer, so the winbar is the only pinned place for them.
 local HINT_TIERS = {
-  "<Tab> file · ]h hunk · <Spc> viewed · c comment · A submit · x unified · ? help",
-  "<Tab> file · ]h hunk · <Spc> viewed · c comment · A submit · ? help",
-  "<Tab> file · ]h hunk · <Spc> viewed · c comment · ? help",
-  "<Tab> file · <Spc> viewed · c comment · ? help",
-  "<Spc> viewed · c comment · ? help",
-  "? help",
+  "q files · <Tab> next · ]h hunk · <Spc> viewed · c comment · A submit · x unified · ? help",
+  "q files · <Tab> next · ]h hunk · <Spc> viewed · c comment · A submit · ? help",
+  "q files · <Tab> next · ]h hunk · <Spc> viewed · c comment · ? help",
+  "q files · <Tab> next · <Spc> viewed · c comment · ? help",
+  "q files · <Spc> viewed · c comment · ? help",
+  "q files · ? help",
 }
 
 local function hints_for(avail)
@@ -290,6 +291,41 @@ end
 
 --- Per-window headers. winbar rather than statusline, because a window-local
 --- statusline never renders under laststatus=3.
+--- The file list, as a modal picker over the diff rather than a fixed column.
+--- Leaves the diff the full width of the terminal.
+local function open_picker()
+  if picker_open() then
+    vim.api.nvim_set_current_win(state.picker_win)
+    return
+  end
+  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
+  local width  = math.max(40, math.min(110, math.floor(ui.width * opts().picker_width)))
+  local height = math.max(8, math.min(math.floor(ui.height * 0.8), #state.visible * 2 + 12))
+  state.picker_width = width
+
+  state.picker_win = vim.api.nvim_open_win(state.panel_buf, true, {
+    relative   = "editor",
+    width      = width,
+    height     = height,
+    row        = math.floor((ui.height - height) / 2) - 1,
+    col        = math.floor((ui.width - width) / 2),
+    style      = "minimal",
+    border     = "rounded",
+    title      = picker_title(),
+    title_pos  = "center",
+    footer     = " <CR> open  ·  <Space> viewed  ·  S sort  ·  f filter  ·  q close ",
+    footer_pos = "center",
+  })
+  vim.wo[state.picker_win].number         = false
+  vim.wo[state.picker_win].relativenumber = false
+  vim.wo[state.picker_win].signcolumn     = "no"
+  vim.wo[state.picker_win].wrap           = false
+  vim.wo[state.picker_win].cursorline     = true
+  vim.wo[state.picker_win].foldenable     = false
+  vim.wo[state.picker_win].list           = false
+  render_panel()
+end
+
 local function set_titles(f)
   if not is_open() then return end
   if not (state.head_win and vim.api.nvim_win_is_valid(state.head_win)) then return end
@@ -308,9 +344,6 @@ local function set_titles(f)
     local base_ref = state.meta and state.meta.base_ref or ""
     vim.wo[state.base_win].winbar = "%#GhDiffWinbarDim# base" ..
       (base_ref ~= "" and ("  " .. base_ref:gsub("%%", "%%%%")) or "") .. "%="
-  end
-  if state.panel_win and vim.api.nvim_win_is_valid(state.panel_win) then
-    vim.wo[state.panel_win].winbar = "%#GhDiffWinbarDim# files%=? help "
   end
 end
 
@@ -542,7 +575,7 @@ end
 local function comment_target(mode)
   local win = vim.api.nvim_get_current_win()
   local f   = state.visible[state.index]
-  if not f or win == state.panel_win then return nil end
+  if not f or win == state.picker_win then return nil end
 
   local from, to
   if mode == "visual" then
@@ -576,7 +609,7 @@ end
 local function add_comment(mode)
   local target = comment_target(mode)
   if not target then
-    vim.notify(vim.api.nvim_get_current_win() == state.panel_win
+    vim.notify(vim.api.nvim_get_current_win() == state.picker_win
       and "Open a file first, then comment on a changed line"
       or  "That line is not part of the diff — comment on a changed line",
       vim.log.levels.INFO)
@@ -679,7 +712,7 @@ local function focus(win)
 end
 
 local function register_keymaps()
-  map_all("q",         function() M.close() end)
+  map_all("q",         function() open_picker() end)
   map_all("<Tab>",     function() goto_file(1) end)
   map_all("<S-Tab>",   function() goto_file(-1) end)
   map_all("]f",        function() goto_file(1) end)
@@ -755,7 +788,7 @@ local function register_keymaps()
     vim.fn.setreg('"', url)
     vim.notify("Copied " .. url, vim.log.levels.INFO)
   end)
-  map_all("<C-h>", function() focus(state.panel_win) end)
+  map_all("<C-h>", function() open_picker() end)
   map_all("<C-l>", function() focus(state.head_win) end)
 
   for _, buf in ipairs(bufs()) do
@@ -764,19 +797,21 @@ local function register_keymaps()
     end
   end
 
-  vim.keymap.set("n", "<CR>", function()
-    local ln  = vim.api.nvim_win_get_cursor(state.panel_win)[1] - 1
-    local idx = state.row_map[ln]
-    if idx then
-      open_file(idx)
-      focus(state.head_win)
-    end
-  end, { buffer = state.panel_buf, nowait = true, silent = true })
-  vim.keymap.set("n", "o", function()
-    local ln  = vim.api.nvim_win_get_cursor(state.panel_win)[1] - 1
-    local idx = state.row_map[ln]
-    if idx then open_file(idx) end
-  end, { buffer = state.panel_buf, nowait = true, silent = true })
+  local function pmap(lhs, fn)
+    vim.keymap.set("n", lhs, fn, { buffer = state.panel_buf, nowait = true, silent = true })
+  end
+  local function enter_diff()
+    if not picker_open() then return end
+    local idx = state.row_map[vim.api.nvim_win_get_cursor(state.picker_win)[1] - 1]
+    if not idx then return end
+    open_file(idx)
+    close_picker()
+    focus(state.head_win)
+  end
+  pmap("<CR>", enter_diff)
+  pmap("o",    enter_diff)
+  pmap("q",     function() M.close() end)
+  pmap("<Esc>", function() M.close() end)
 end
 
 -- ── auto preview ───────────────────────────────────────────────────────────
@@ -788,13 +823,14 @@ local function setup_autocmds()
     group  = group,
     buffer = state.panel_buf,
     callback = function()
-      if state.syncing or not opts().auto_preview then return end
-      local ln  = vim.api.nvim_win_get_cursor(state.panel_win)[1] - 1
+      if state.syncing or not opts().auto_preview or not picker_open() then return end
+      local ln  = vim.api.nvim_win_get_cursor(state.picker_win)[1] - 1
       local idx = state.row_map[ln]
       if not idx or idx == state.index then return end
       if state.timer then state.timer:stop() end
       state.timer = vim.defer_fn(function()
-        if is_open() and state.row_map[vim.api.nvim_win_get_cursor(state.panel_win)[1] - 1] == idx then
+        if is_open() and picker_open()
+          and state.row_map[vim.api.nvim_win_get_cursor(state.picker_win)[1] - 1] == idx then
           open_file(idx)
         end
       end, 90)
@@ -825,6 +861,7 @@ end
 
 function M.close()
   if state.timer then state.timer:stop() end
+  close_picker()
   restore_diffopt()
   if is_open() then
     local tab = state.tab
@@ -872,8 +909,10 @@ function M.open(item)
   register_keymaps()
   setup_autocmds()
 
+  state.picker_width = 60
   utils.write_buf(state.panel_buf, ns_panel,
-    { "", "  PR #" .. item.number, "", "  ⠋ loading changed files…" }, {})
+    { "", "  ⠋ loading changed files…" }, {})
+  open_picker()
   utils.write_buf(state.head_buf, ns_head, { "", "  Loading diff…" }, {})
 
   local pending = 2
@@ -892,7 +931,9 @@ function M.open(item)
       show_message("this pull request has no file changes")
       return
     end
+    close_picker()
     refilter(keep)
+    open_picker()
     fetch.fetch_review_comments(item.number, item.repo, function(list)
       if not is_open() then return end
       state.comments = list

@@ -38,7 +38,7 @@ require("gh_dashboard").setup({
 
   diff = {
     layout          = "side_by_side",  -- or "unified"
-    panel_width     = 36,              -- file panel width in columns
+    picker_width    = 0.6,             -- file picker width as fraction of screen
     context         = 6,               -- unchanged lines kept visible around hunks
     auto_preview    = true,            -- open the file under the panel cursor
     hide_generated  = true,            -- hide lockfiles and build output by default
@@ -76,27 +76,32 @@ require("gh_dashboard").setup({
 
 ## Diff Viewer
 
-`d` on a PR (from the dashboard or the reader), or `:GhDiff`, opens a dedicated tab built
-for reviewing large diffs: a file panel on the left, a side-by-side diff
-on the right.
+`d` on a PR (from the dashboard or the reader), or `:GhDiff`, opens a file picker listing
+every changed file. `<CR>` takes you into the diff; `q` takes you back out to the picker.
 
 ```
-┌─ Files ──────────┬─ src/nvim/mapping.c ────────────────────────┐
-│ PR #41560        │  BASE            │  HEAD                    │
-│ 11 files +235 −36│ 41 static int m( │ 41 static int m(int fl)  │
-│ 3/11 viewed      │ ⋯ 18 lines ⋯     │ ⋯ 18 lines ⋯             │
-│ ──────────────── │ 61   return x    │ 61   validate(fl);       │
-│ ✓ M input.c      │                  │ 62   return x            │
-│     +16 −8  ▇▁▁▁▁│                  │                          │
-│   A cmdatom_spec │                  │                          │
-│     +140 −0 ▇▇▇▇▇│                  │                          │
-└──────────────────┴──────────────────┴──────────────────────────┘
+╭──────── PR #9 · you/repo · 3/14 viewed ─────────╮
+│  14 files  +1911  −1927            no-gen · path│
+│─────────────────────────────────────────────────│
+│  ✓ M  lua/gh_dashboard/init.lua  +39  −732 ▇▇▇▇▁│
+│    D  lua/gh_dashboard/reader.lua +0 −1131 ▇▇▇▇▇│
+│    A  lua/gh_dashboard/reader/init.lua +432 ▇▇▁▁│
+╰─── <CR> open · <Space> viewed · S sort · q close ╯
+```
+
+Inside, the diff takes the full width of the terminal:
+
+```
+ base  master                         │ lua/gh_dashboard/init.lua    q files · <Tab> next · ]h hunk · ? help
+   1 local M = {}                     │   1 local M = {}
+   2 local heatmap = require(…)       │   2 local heatmap    = require(…)
+     ------------------------------   │   3 local highlights = require(…)
 ```
 
 Both sides are real buffers with the file's own filetype, so you get treesitter syntax
 highlighting on top of Neovim's diff highlighting — including character-level intra-line
-diffs. Unchanged regions are folded away (`zo` to expand). The file panel shows every
-changed file with its status, `+`/`−` counts and a bar scaled to the largest file in the PR.
+diffs. Unchanged regions are folded away (`zo` to expand). The picker shows every changed
+file with its status, `+`/`−` counts and a bar scaled to the largest file in the PR.
 
 Files load lazily — one request for the whole file list, then one blob per file as you open
 it, with the next file prefetched in the background.
@@ -111,7 +116,7 @@ the repo from the working directory; `:GhDiff 42 owner/repo` targets any repo.
 
 | Key | Action |
 |-----|--------|
-| `<CR>` / `o` | Open file under cursor (file panel) |
+| `<CR>` / `o` | Open the file under the cursor (picker) |
 | `<Tab>` / `<S-Tab>` | Next / previous file |
 | `]f` / `[f` | Next / previous file |
 | `]h` / `[h` | Next / previous hunk |
@@ -122,16 +127,16 @@ the repo from the working directory; `:GhDiff 42 owner/repo` targets any repo.
 | `c` | Queue a review comment (normal line or visual range) |
 | `A` | Submit review with all queued comments |
 | `D` | Discard queued comments |
-| `S` | Cycle sort: path / change size / status *(panel)* |
-| `f` / `F` | Filter files by substring / toggle generated files *(panel)* |
-| `w` | Toggle whitespace-only changes *(panel)* |
+| `S` | Cycle sort: path / change size / status *(picker)* |
+| `f` / `F` | Filter files by substring / toggle generated files *(picker)* |
+| `w` | Toggle whitespace-only changes *(picker)* |
 | `zo` / `zc` / `zR` / `zM` | Folds |
 | `O` / `gy` | Open on github.com / yank a permalink |
-| `<C-h>` / `<C-l>` | Focus file panel / diff |
+| `<C-h>` | Reopen the file picker |
 | `r` | Refresh |
-| `q` | Close the tab, back to the dashboard |
+| `q` | In the diff: back to the picker · In the picker: close |
 
-Keys marked *(panel)* are bound on the file panel only, so `w`, `f`, `F` and `S` stay native
+Keys marked *(picker)* are bound in the picker only, so `w`, `f`, `F` and `S` stay native
 motions in the diff windows.
 
 Which files you have marked viewed is remembered per PR and reset when the PR gets new
