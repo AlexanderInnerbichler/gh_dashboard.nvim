@@ -13,7 +13,17 @@ local state = {
   win           = nil,
   item          = nil,
   data          = nil,
+  req           = 0,
 }
+
+--- Fetches outlive the window: closing the reader wipes its buffer, and a
+--- late callback would either write to a dead buffer or, worse, call
+--- open_popup and reopen the view the user just dismissed. Every request
+--- carries a token that close_popup invalidates.
+local function stale(token)
+  return token ~= state.req
+      or not (state.win and vim.api.nvim_win_is_valid(state.win))
+end
 
 -- ── namespace ──────────────────────────────────────────────────────────────
 
@@ -28,6 +38,7 @@ end
 -- ── window management ──────────────────────────────────────────────────────
 
 local function close_popup()
+  state.req = state.req + 1
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, false)
     state.win = nil
@@ -210,6 +221,8 @@ end
 function M.open(item)
   state.item = item
   state.data = nil
+  state.req  = state.req + 1
+  local token = state.req
   local label = item.number and ("#" .. tostring(item.number)) or (item.full_name or item.repo or "…")
   open_popup(label .. " — loading…", "q back")
 
@@ -223,6 +236,7 @@ function M.open(item)
 
   if item.kind == "issue" then
     fetch.fetch_issue(item, function(err, data)
+      if stale(token) then return end
       if err then
         vim.bo[state.buf].modifiable = true
         vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { "", "  ✗ " .. sl(err) })
@@ -239,13 +253,14 @@ function M.open(item)
     local pending = 2
     local function on_both()
       pending = pending - 1
-      if pending > 0 then return end
+      if pending > 0 or stale(token) then return end
       state.data = pr_data
       local lines, hl_specs, title, footer = render.render_pr(pr_data, rc_data or {})
       open_popup(title, footer)
       write_buf(lines, hl_specs)
     end
     fetch.fetch_pr(item, function(err, data)
+      if stale(token) then return end
       if err then
         vim.bo[state.buf].modifiable = true
         vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { "", "  ✗ " .. sl(err) })
@@ -256,11 +271,13 @@ function M.open(item)
       on_both()
     end)
     fetch.fetch_review_comments(item.number, item.repo, function(data)
+      if stale(token) then return end
       rc_data = data
       on_both()
     end)
   elseif item.kind == "repo" then
     fetch.fetch_readme(item, function(err, body)
+      if stale(token) then return end
       if err then
         vim.bo[state.buf].modifiable = true
         vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { "", "  ✗ " .. sl(err) })
