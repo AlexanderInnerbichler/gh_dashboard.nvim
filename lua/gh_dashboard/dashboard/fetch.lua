@@ -177,6 +177,51 @@ function M.repos(callback)
   )
 end
 
+function M.org_repos(callback)
+  gh.run_with_retry(
+    { "gh", "api", "/user/orgs", "--paginate" },
+    function(err, orgs)
+      if err or not orgs or #orgs == 0 then
+        callback(nil, {})
+        return
+      end
+      local pending   = #orgs
+      local all_repos = {}
+      local any_err
+      for _, org in ipairs(orgs) do
+        gh.run_with_retry(
+          { "gh", "repo", "list", org.login, "--limit", "1000",
+            "--json", "name,nameWithOwner,url,primaryLanguage,stargazerCount,isPrivate,pushedAt" },
+          function(ferr, repos)
+            if ferr then
+              any_err = ferr
+            else
+              for _, r in ipairs(repos or {}) do
+                table.insert(all_repos, {
+                  name       = r.name,
+                  full_name  = r.nameWithOwner,
+                  url        = r.url,
+                  language   = type(r.primaryLanguage) == "table" and r.primaryLanguage.name or "",
+                  stars      = r.stargazerCount or 0,
+                  is_private = r.isPrivate,
+                  updated_at = r.pushedAt,
+                })
+              end
+            end
+            pending = pending - 1
+            if pending == 0 then
+              table.sort(all_repos, function(a, b)
+                return (a.updated_at or "") > (b.updated_at or "")
+              end)
+              callback(any_err, all_repos)
+            end
+          end
+        )
+      end
+    end
+  )
+end
+
 function M.notifications(callback)
   gh.run_with_retry(
     { "gh", "api", "/notifications" },

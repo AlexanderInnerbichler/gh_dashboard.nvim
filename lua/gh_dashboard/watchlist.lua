@@ -28,6 +28,9 @@ local state = {
 
 local ns = vim.api.nvim_create_namespace("GhWatchlist")
 
+-- defined under "jump to activity" below; referenced by notification keymaps
+local open_event
+
 -- ── persistence ────────────────────────────────────────────────────────────
 
 local function load_watchlist()
@@ -572,7 +575,6 @@ end
 
 -- ── jump to activity ──────────────────────────────────────────────────────
 
--- forward declared here, used in show_notification keymaps above
 open_event = function(repo, ev)
   local p = ev.payload or {}
   if ev.type == "PullRequestEvent" then
