@@ -1,3 +1,4 @@
+local utils = require("gh_dashboard.utils")
 local M = {}
 local heatmap = require("gh_dashboard.heatmap")
 local gh      = require("gh_dashboard.gh")
@@ -6,7 +7,7 @@ local ns = vim.api.nvim_create_namespace("GhUserProfile")
 
 -- ── helpers ────────────────────────────────────────────────────────────────
 
-local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
+local sl = utils.sl
 
 -- ── fetch functions ────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ local function render_content(lines, hl_specs, items, username, profile, contrib
   elseif profile then
     local total = contrib and contrib.total or 0
     local stats = string.format(
-      "  👥 %d followers · %d following · %d repos · %d contributions",
+      "  👥 %d followers  %d following  %d repos  %d contributions",
       profile.followers or 0, profile.following or 0, profile.public_repos or 0, total
     )
     table.insert(lines, stats)
@@ -99,37 +100,10 @@ end
 
 M.open = function(username)
   -- create buffer
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[buf].buftype    = "nofile"
-  vim.bo[buf].bufhidden  = "wipe"
-  vim.bo[buf].modifiable = true
-  vim.bo[buf].filetype   = "text"
-
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.90)
-  local height = math.floor(ui.height * 0.90)
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  local win = vim.api.nvim_open_win(buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " @" .. username .. " ",
-    title_pos  = "center",
-    footer     = " q close ",
-    footer_pos = "center",
+  local buf = utils.scratch_buf({ modifiable = true })
+  local win = utils.float(buf, {
+    cursorline = true, title = " @" .. username .. " ", footer = " q close ",
   })
-  vim.wo[win].number         = false
-  vim.wo[win].relativenumber = false
-  vim.wo[win].signcolumn     = "no"
-  vim.wo[win].cursorline     = true
-  vim.wo[win].wrap           = false
-  vim.wo[win].foldenable     = false
 
   -- show loading state immediately
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "", "  Loading @" .. username .. "…", "" })
@@ -175,14 +149,7 @@ M.open = function(username)
     table.insert(lines, "")
 
     if not vim.api.nvim_buf_is_valid(buf) then return end
-    vim.bo[buf].modifiable = true
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    vim.bo[buf].modifiable = false
-    vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-    for _, spec in ipairs(hl_specs) do
-      vim.api.nvim_buf_add_highlight(buf, ns, spec.hl, spec.line,
-        spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
-    end
+    utils.write_buf(buf, ns, lines, hl_specs)
   end
 
   local function done()

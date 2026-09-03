@@ -807,7 +807,7 @@ M.debug_win = function()
     border     = "rounded",
     title      = " Duck Debug ",
     title_pos  = "center",
-    footer     = " r run · p peck · n night · s season · c clear · q close ",
+    footer     = " r run  p peck  n night  s season  c clear  q close ",
     footer_pos = "center",
   })
   vim.wo[debug_state.win].number         = false

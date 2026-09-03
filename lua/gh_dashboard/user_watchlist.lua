@@ -1,3 +1,4 @@
+local utils = require("gh_dashboard.utils")
 local M = {}
 local highlights = require("gh_dashboard.highlights")
 
@@ -53,14 +54,7 @@ local function render_manager()
     end
   end
   table.insert(lines, "")
-  vim.bo[state.manager_buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.manager_buf, 0, -1, false, lines)
-  vim.bo[state.manager_buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.manager_buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    vim.api.nvim_buf_add_highlight(state.manager_buf, ns, spec.hl, spec.line,
-      spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
-  end
+  utils.write_buf(state.manager_buf, ns, lines, hl_specs)
 end
 
 local function close_manager()
@@ -71,46 +65,8 @@ local function close_manager()
 end
 
 local function open_add_input()
-  local input_buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[input_buf].buftype    = "nofile"
-  vim.bo[input_buf].bufhidden  = "wipe"
-  vim.bo[input_buf].modifiable = true
-  vim.bo[input_buf].filetype   = "text"
-
-  local ui    = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width = 40
-  local row   = math.floor(ui.height / 2)
-  local col   = math.floor((ui.width - width) / 2)
-
-  local input_win = vim.api.nvim_open_win(input_buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = 1,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " Add GitHub username ",
-    title_pos  = "center",
-    footer     = " <C-s> confirm  ·  <Esc><Esc> cancel ",
-    footer_pos = "center",
-  })
-  vim.wo[input_win].wrap       = true
-  vim.wo[input_win].foldenable = false
-  vim.api.nvim_win_set_cursor(input_win, { 1, 0 })
-  vim.cmd("startinsert")
-
-  local function do_cancel()
-    if vim.api.nvim_win_is_valid(input_win) then
-      vim.api.nvim_win_close(input_win, true)
-    end
-  end
-
-  local function do_confirm()
-    local text = vim.trim(vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
-    if vim.api.nvim_win_is_valid(input_win) then
-      vim.api.nvim_win_close(input_win, true)
-    end
+  utils.prompt({ title = "Add GitHub username", width = 40,
+                 footer = " <C-s> confirm   <Esc> cancel" }, function(text)
     if text == "" then return end
     if text:find("/") then
       vim.notify("Enter a bare username, not owner/repo", vim.log.levels.WARN)
@@ -129,14 +85,7 @@ local function open_add_input()
       local lines = vim.api.nvim_buf_get_lines(state.manager_buf, 0, -1, false)
       vim.api.nvim_win_set_cursor(state.manager_win, { math.max(1, #lines - 1), 0 })
     end
-  end
-
-  local function imap(mode, lhs, fn)
-    vim.keymap.set(mode, lhs, fn, { buffer = input_buf, nowait = true, silent = true })
-  end
-  imap("n", "<C-s>", do_confirm)
-  imap("i", "<C-s>", do_confirm)
-  imap("n", "<Esc><Esc>", do_cancel)
+  end)
 end
 
 local function remove_at_cursor()
@@ -166,30 +115,11 @@ local function open_manager()
     vim.bo[state.manager_buf].filetype   = "text"
   end
 
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.70)
-  local height = math.floor(ui.height * 0.50)
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  state.manager_win = vim.api.nvim_open_win(state.manager_buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " Watched Users ",
-    title_pos  = "center",
-    footer     = " a add  ·  d/x remove  ·  <CR> profile  ·  q close ",
-    footer_pos = "center",
+  state.manager_win = utils.float(state.manager_buf, {
+    w = 0.70, h = 0.50, cursorline = true,
+    title  = " Watched Users ",
+    footer = " <CR>/o profile   a add   x remove   q close ",
   })
-  vim.wo[state.manager_win].number         = false
-  vim.wo[state.manager_win].relativenumber = false
-  vim.wo[state.manager_win].signcolumn     = "no"
-  vim.wo[state.manager_win].cursorline     = true
-  vim.wo[state.manager_win].foldenable     = false
 
   render_manager()
 
@@ -197,11 +127,18 @@ local function open_manager()
     vim.keymap.set("n", lhs, fn, { buffer = state.manager_buf, nowait = true, silent = true })
   end
   bmap("a",     open_add_input)
-  bmap("d",     remove_at_cursor)
   bmap("x",     remove_at_cursor)
   bmap("q",     close_manager)
   bmap("<Esc>", close_manager)
   bmap("<CR>", function()
+    if not state.manager_win or not vim.api.nvim_win_is_valid(state.manager_win) then return end
+    local cur = vim.api.nvim_win_get_cursor(state.manager_win)[1]
+    local idx = cur - 1  -- line 1 = "", line 2 = first user
+    if idx >= 1 and idx <= #state.users then
+      require("gh_dashboard.user_profile").open(state.users[idx])
+    end
+  end)
+  bmap("o", function()
     if not state.manager_win or not vim.api.nvim_win_is_valid(state.manager_win) then return end
     local cur = vim.api.nvim_win_get_cursor(state.manager_win)[1]
     local idx = cur - 1  -- line 1 = "", line 2 = first user

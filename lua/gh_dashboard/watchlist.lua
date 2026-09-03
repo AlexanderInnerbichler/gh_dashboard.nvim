@@ -1,5 +1,6 @@
 local M = {}
 local config     = require("gh_dashboard.config")
+local gh_events = require("gh_dashboard.events")
 local gh         = require("gh_dashboard.gh")
 local highlights = require("gh_dashboard.highlights")
 local utils      = require("gh_dashboard.utils")
@@ -27,6 +28,9 @@ local state = {
 -- ── namespace ──────────────────────────────────────────────────────────────
 
 local ns = vim.api.nvim_create_namespace("GhWatchlist")
+
+-- defined under "jump to activity" below; referenced by notification keymaps
+local open_event
 
 -- ── persistence ────────────────────────────────────────────────────────────
 
@@ -156,19 +160,15 @@ local function show_notification(repo, ev)
   local max_detail = NOTIF_WIDTH - 4
   if #detail > max_detail then detail = detail:sub(1, max_detail - 1) .. "…" end
 
-  local line1 = "  " .. icon .. label .. (age ~= "" and ("  ·  " .. age) or "")
+  local line1 = "  " .. icon .. label .. (age ~= "" and ("   " .. age) or "")
   local line2 = detail ~= "" and ("  " .. detail) or nil
 
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.b[buf].render_markdown = { enabled = false }
-  vim.bo[buf].bufhidden = "wipe"
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line1, line2 or "", "", "" })
-  vim.bo[buf].modifiable = false
-  vim.api.nvim_buf_add_highlight(buf, ns, "GhWatchNotif", 0, 2, 2 + #icon)
+  local buf      = utils.scratch_buf()
+  local hl_specs = { { hl = "GhWatchNotif", line = 0, col_s = 2, col_e = 2 + #icon } }
   if line2 then
-    vim.api.nvim_buf_add_highlight(buf, ns, "GhWatchMeta", 1, 0, -1)
+    table.insert(hl_specs, { hl = "GhWatchMeta", line = 1, col_s = 0, col_e = -1 })
   end
+  utils.write_buf(buf, ns, { line1, line2 or "", "", "" }, hl_specs)
 
   local win = vim.api.nvim_open_win(buf, false, {
     relative   = "editor",
@@ -180,7 +180,7 @@ local function show_notification(repo, ev)
     border     = "rounded",
     title      = " " .. repo .. " ",
     title_pos  = "left",
-    footer     = " <CR> expand  ·  q dismiss ",
+    footer     = " <CR>/o expand   q dismiss ",
     footer_pos = "center",
     focusable  = true,
     zindex     = 50,
@@ -199,6 +199,8 @@ local function show_notification(repo, ev)
   end
 
   vim.keymap.set("n", "<CR>",  function() close_notif(); open_event(repo, ev) end,
+    { buffer = buf, nowait = true, silent = true })
+  vim.keymap.set("n", "o"   ,  function() close_notif(); open_event(repo, ev) end,
     { buffer = buf, nowait = true, silent = true })
   vim.keymap.set("n", "q",     close_notif, { buffer = buf, nowait = true, silent = true })
   vim.keymap.set("n", "<Esc>", close_notif, { buffer = buf, nowait = true, silent = true })
@@ -231,25 +233,17 @@ local function mark_seen(entry, ev_id)
 end
 
 local function seed_seen(entry)
-  gh.run_with_retry(
-    { "gh", "api", "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
-      "--jq", "[.[] | {id}] | .[0:10]" },
-    function(err, events)
-      if err or type(events) ~= "table" then return end
-      for _, ev in ipairs(events) do
-        mark_seen(entry, tostring(ev.id))
-      end
-      save_watchlist()
+  gh_events.repo(entry.owner, entry.repo, function(err, events)
+    if err or type(events) ~= "table" then return end
+    for i = 1, math.min(10, #events) do
+      mark_seen(entry, tostring(events[i].id))
     end
-  )
+    save_watchlist()
+  end)
 end
 
 local function poll_repo(entry, on_done)
-  gh.run_with_retry(
-    { "gh", "api",
-      "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
-      "--jq", "[.[] | {id,type,created_at,payload}] | .[0:10]" },
-    function(err, events)
+  gh_events.repo(entry.owner, entry.repo, function(err, events)
       if not (err or not events or type(events) ~= "table" or #events == 0) then
         local new_events  = {}
         local notif_items = {}
@@ -284,21 +278,16 @@ end
 
 local function seed_history()
   for _, entry in ipairs(state.repos) do
-    gh.run_with_retry(
-      { "gh", "api",
-        "repos/" .. entry.owner .. "/" .. entry.repo .. "/events",
-        "--jq", "[.[] | {id,type,created_at,payload}] | .[0:5]" },
-      function(err, events)
-        if err or not events or type(events) ~= "table" then return end
-        local repo_key = entry.owner .. "/" .. entry.repo
-        for _, ev in ipairs(events) do
-          table.insert(state.history, { _repo = repo_key, _ev = ev })
-        end
-        while #state.history > config.get().max_history do
-          table.remove(state.history)
-        end
+    gh_events.repo(entry.owner, entry.repo, function(err, events)
+      if err or type(events) ~= "table" then return end
+      local repo_key = entry.owner .. "/" .. entry.repo
+      for i = 1, math.min(5, #events) do
+        table.insert(state.history, { _repo = repo_key, _ev = events[i] })
       end
-    )
+      while #state.history > config.get().max_history do
+        table.remove(state.history)
+      end
+    end)
   end
 end
 
@@ -403,49 +392,8 @@ local function close_manager()
 end
 
 local function open_add_input()
-  local input_buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[input_buf].buftype   = "nofile"
-  vim.bo[input_buf].bufhidden = "wipe"
-  vim.bo[input_buf].filetype  = "text"
-
-  vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "", "" })
-
-  local ui    = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width = math.floor(ui.width * 0.50)
-  local height = 5
-  local row   = math.floor((ui.height - height) / 2)
-  local col   = math.floor((ui.width  - width)  / 2)
-
-  local input_win = vim.api.nvim_open_win(input_buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " Add repo (owner/repo) ",
-    title_pos  = "center",
-    footer     = " <C-s> confirm  ·  <Esc><Esc> cancel ",
-    footer_pos = "center",
-  })
-  vim.wo[input_win].wrap       = true
-  vim.wo[input_win].foldenable = false
-
-  vim.api.nvim_win_set_cursor(input_win, { 1, 0 })
-  vim.cmd("startinsert")
-
-  local function do_cancel()
-    if vim.api.nvim_win_is_valid(input_win) then
-      vim.api.nvim_win_close(input_win, true)
-    end
-  end
-
-  local function do_confirm()
-    local text = vim.trim(vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
-    if vim.api.nvim_win_is_valid(input_win) then
-      vim.api.nvim_win_close(input_win, true)
-    end
+  utils.prompt({ title = "Add repo (owner/repo)", w = 0.5,
+                 footer = " <C-s> confirm   <Esc> cancel" }, function(text)
     if text == "" then return end
     local owner, repo = text:match("^([^/]+)/([^/]+)$")
     if not owner or not repo then
@@ -466,19 +414,7 @@ local function open_add_input()
       local lines = vim.api.nvim_buf_get_lines(state.manager_buf, 0, -1, false)
       vim.api.nvim_win_set_cursor(state.manager_win, { math.max(1, #lines - 1), 0 })
     end
-  end
-
-  local function imap(mode, lhs, fn)
-    vim.keymap.set(mode, lhs, fn, { buffer = input_buf, nowait = true, silent = true })
-  end
-  imap("n", "<C-s>", do_confirm)
-  imap("i", "<C-s>", do_confirm)
-  imap("n", "<Esc><Esc>", do_cancel)
-
-  vim.api.nvim_create_autocmd("BufWipeout", {
-    buffer = input_buf, once = true,
-    callback = function() end,
-  })
+  end)
 end
 
 local function remove_at_cursor()
@@ -522,30 +458,11 @@ local function open_manager()
     vim.bo[state.manager_buf].filetype   = "text"
   end
 
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.90)
-  local height = math.floor(ui.height * 0.90)
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  state.manager_win = vim.api.nvim_open_win(state.manager_buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " Watched Repos ",
-    title_pos  = "center",
-    footer     = " <CR> view  ·  a add  ·  d/x remove  ·  q close ",
-    footer_pos = "center",
+  state.manager_win = utils.float(state.manager_buf, {
+    cursorline = true,
+    title  = " Watched Repos ",
+    footer = " <CR>/o view   a add   x remove   q close ",
   })
-  vim.wo[state.manager_win].number         = false
-  vim.wo[state.manager_win].relativenumber = false
-  vim.wo[state.manager_win].signcolumn     = "no"
-  vim.wo[state.manager_win].cursorline     = true
-  vim.wo[state.manager_win].foldenable     = false
 
   render_manager()
   fetch_manager_meta()
@@ -554,8 +471,8 @@ local function open_manager()
     vim.keymap.set("n", lhs, fn, { buffer = state.manager_buf, nowait = true, silent = true })
   end
   bmap("<CR>",  open_repo_at_cursor)
+  bmap("o",     open_repo_at_cursor)
   bmap("a",     open_add_input)
-  bmap("d",     remove_at_cursor)
   bmap("x",     remove_at_cursor)
   bmap("q",     close_manager)
   bmap("<Esc>", close_manager)
@@ -572,7 +489,6 @@ end
 
 -- ── jump to activity ──────────────────────────────────────────────────────
 
--- forward declared here, used in show_notification keymaps above
 open_event = function(repo, ev)
   local p = ev.payload or {}
   if ev.type == "PullRequestEvent" then
@@ -611,8 +527,8 @@ local function open_history_popup()
     local label = event_label(entry._ev)
     local repo  = entry._repo
     local age   = utils.age_string(entry._ev.created_at)
-    local age_part = age ~= "" and ("  ·  " .. age) or ""
-    local line  = "   " .. icon .. label .. "  ·  " .. repo .. age_part
+    local age_part = age ~= "" and ("   " .. age) or ""
+    local line  = "   " .. icon .. label .. "   " .. repo .. age_part
     local ln         = #lines
     local icon_s     = 3
     local icon_e     = icon_s + #icon
@@ -631,32 +547,13 @@ local function open_history_popup()
   table.insert(lines, "")
   write_buf(buf, lines, hl_specs)
 
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.70)
-  local height = math.floor(ui.height * 0.50)
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  local win = vim.api.nvim_open_win(buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " Recent Notifications ",
-    title_pos  = "center",
-    footer     = " <CR> open  ·  q close ",
-    footer_pos = "center",
+  local win = utils.float(buf, {
+    w = 0.70, h = 0.50, cursorline = true,
+    title  = " Recent Notifications ",
+    footer = " <CR>/o open   q close ",
   })
   vim.api.nvim_set_option_value("winhl",
     "FloatTitle:GhWatchTitle,FloatBorder:GhWatchSep", { win = win })
-  vim.wo[win].cursorline     = true
-  vim.wo[win].number         = false
-  vim.wo[win].relativenumber = false
-  vim.wo[win].signcolumn     = "no"
-  vim.wo[win].foldenable     = false
 
   local function bmap(lhs, fn)
     vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true, silent = true })
@@ -673,6 +570,7 @@ local function open_history_popup()
   end
 
   bmap("<CR>",  open_at_cursor)
+  bmap("o",     open_at_cursor)
   bmap("q",     function() if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, false) end end)
   bmap("<Esc>", function() if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, false) end end)
 end

@@ -1,17 +1,11 @@
 local M  = {}
-local gh = require("gh_dashboard.gh")
+local gh    = require("gh_dashboard.gh")
+local utils = require("gh_dashboard.utils")
 
 -- ── helpers ────────────────────────────────────────────────────────────────
 
-local function safe_str(v)
-  if v == nil or v == vim.NIL then return "" end
-  return tostring(v)
-end
-
-local function safe_list(v)
-  if type(v) ~= "table" then return {} end
-  return v
-end
+local safe_str  = utils.safe_str
+local safe_list = utils.safe_list
 
 -- ── fetch functions ────────────────────────────────────────────────────────
 
@@ -137,63 +131,6 @@ function M.fetch_review_comments(number, repo, callback)
         if result.code ~= 0 then callback({}) return end
         local ok, data = pcall(vim.json.decode, result.stdout or "[]")
         callback(ok and type(data) == "table" and data or {})
-      end)
-    end
-  )
-end
-
-function M.fetch_head_sha(number, repo, callback)
-  vim.system(
-    { "gh", "pr", "view", tostring(number), "--repo", repo,
-      "--json", "headRefOid", "--jq", ".headRefOid" },
-    { text = true },
-    function(result)
-      vim.schedule(function()
-        if result.code ~= 0 then
-          callback(result.stderr or "gh error", nil)
-        else
-          callback(nil, vim.trim(result.stdout or ""))
-        end
-      end)
-    end
-  )
-end
-
-function M.fetch_diff(number, repo, callback)
-  vim.system(
-    { "gh", "pr", "diff", tostring(number), "--repo", repo },
-    { text = true },
-    function(result)
-      vim.schedule(function()
-        if result.code ~= 0 then
-          callback(result.stderr or "gh error", nil)
-        else
-          callback(nil, result.stdout or "")
-        end
-      end)
-    end
-  )
-end
-
-function M.post_review_comment(number, repo, sha, path, line, side, body, callback)
-  vim.system(
-    { "gh", "api", "repos/" .. repo .. "/pulls/" .. tostring(number) .. "/comments",
-      "-f", "body=" .. body,
-      "-f", "commit_id=" .. sha,
-      "-f", "path=" .. path,
-      "-F", "line=" .. tostring(line),
-      "-f", "side=" .. side },
-    { text = true },
-    function(result)
-      vim.schedule(function()
-        if result.code ~= 0 then
-          local msg = (result.stdout ~= "" and result.stdout)
-                   or (result.stderr ~= "" and result.stderr)
-                   or "api error"
-          callback(msg)
-        else
-          callback(nil)
-        end
       end)
     end
   )

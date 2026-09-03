@@ -38,11 +38,23 @@ function M.run(args, callback)
   end
 end
 
---- Run a gh CLI command with up to 2 retries on failure (exponential backoff: 1s, 2s).
+-- A 404 on a renamed/deleted repo will never succeed, so retrying it just
+-- costs three calls and 3s of backoff on every refresh. 403 is either
+-- forbidden or a rate limit, and neither recovers within a 2s backoff.
+local PERMANENT = { ["400"] = true, ["401"] = true, ["403"] = true,
+                    ["404"] = true, ["410"] = true, ["422"] = true }
+
+--- True when a failure will not fix itself (renamed/deleted repo, no access).
+function M.is_permanent(err)
+  local code = tostring(err or ""):match("HTTP (%d%d%d)")
+  return code ~= nil and PERMANENT[code] == true
+end
+
+--- Run a gh CLI command, retrying transient failures twice (backoff 1s, 2s).
 function M.run_with_retry(args, callback, attempts)
   attempts = attempts or 0
   M.run(args, function(err, data)
-    if err and attempts < 2 then
+    if err and attempts < 2 and not M.is_permanent(err) then
       vim.defer_fn(function()
         M.run_with_retry(args, callback, attempts + 1)
       end, 2 ^ attempts * 1000)
