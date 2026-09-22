@@ -3,6 +3,7 @@ local highlights = require("gh_dashboard.highlights")
 local fetch      = require("gh_dashboard.reader.fetch")
 local render     = require("gh_dashboard.reader.render")
 local actions    = require("gh_dashboard.reader.actions")
+local review     = require("gh_dashboard.diff.review")
 local utils      = require("gh_dashboard.utils")
 local config     = require("gh_dashboard.config")
 
@@ -78,30 +79,32 @@ local function register_keymaps()
   end)
   bmap("a", function()
     if not state.item or state.item.kind ~= "pr" then return end
-    local item = state.item
-    vim.ui.select(
-      { "Approve", "Request Changes", "Comment Only", "Cancel" },
-      { prompt = "Review type:" },
-      function(choice)
-        if not choice or choice == "Cancel" then return end
-        local kind_map = {
-          ["Approve"]          = "approve",
-          ["Request Changes"]  = "request_changes",
-          ["Comment Only"]     = "comment",
-        }
-        local kind = kind_map[choice]
-        utils.prompt({ title = choice, lines = 12 }, function(body)
-          actions.submit_review(item, kind, body, function(err)
-            if err then
-              vim.notify("Review failed: " .. err, vim.log.levels.ERROR)
-            else
-              vim.notify("Review submitted", vim.log.levels.INFO)
-              M.open(item)
-            end
-          end)
-        end)
+    local item    = state.item
+    local pending = review.count(review.key(item.repo, item.number))
+    local queued  = string.format("%d inline comment%s", pending, pending == 1 and "" or "s")
+    utils.prompt({
+      title   = pending > 0 and ("Review — " .. queued .. " riding along") or "Review",
+      lines   = 12,
+      submits = { ["<C-s>"] = "comment", ["<C-a>"] = "approve",
+                  ["<C-r>"] = "request_changes" },
+      footer  = " <C-s> comment   <C-a> approve   <C-r> request changes   <Esc><Esc> cancel ",
+    }, function(body, kind)
+      actions.submit_review(item, kind, body, function(err)
+        if err then
+          vim.notify("Review failed: " .. err
+                     .. (pending > 0 and (" — " .. queued .. " still queued") or ""),
+                     vim.log.levels.ERROR)
+          return
+        end
+        vim.notify(pending > 0 and ("Review submitted with " .. queued) or "Review submitted",
+                   vim.log.levels.INFO)
+        M.open(item)
+      end)
+    end, function()
+      if pending > 0 then
+        vim.notify("Review not sent — " .. queued .. " still queued", vim.log.levels.WARN)
       end
-    )
+    end)
   end)
   bmap("m", function()
     if not state.item or state.item.kind ~= "pr" then return end

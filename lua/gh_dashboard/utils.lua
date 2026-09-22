@@ -129,8 +129,10 @@ function M.float(buf, opts)
 end
 
 --- Text prompt in a float. `lines` > 1 gives a multi-line body.
---- on_submit gets the trimmed text; cancelling never calls it.
-function M.prompt(opts, on_submit)
+--- opts.submits maps keys to a tag handed to on_submit alongside the text;
+--- it defaults to <C-s> with no tag. on_submit gets the trimmed text.
+--- Cancelling calls on_cancel, so no caller loses work in silence.
+function M.prompt(opts, on_submit, on_cancel)
   local rows = opts.lines or 1
   local buf  = M.scratch_buf({ modifiable = true })
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
@@ -146,28 +148,43 @@ function M.prompt(opts, on_submit)
       or  " <C-s> submit   <Esc> then <Esc> cancel "),
   })
   vim.api.nvim_win_set_cursor(win, { 1, 0 })
-  vim.cmd("startinsert")
+  -- Getting this wrong drops you into the prompt in normal mode, where the
+  -- sentence you type runs as commands -- v starts a selection, G drags it to
+  -- the end of the buffer. :startinsert is lost whenever the caller runs its
+  -- own teardown afterwards (dressing's vim.ui.select calls stopinsert on the
+  -- way out), and feeding the key from inside the caller's own keystroke is
+  -- swallowed too, so do it on the next tick with the prompt still focused.
+  vim.schedule(function()
+    if vim.api.nvim_win_is_valid(win) and vim.api.nvim_get_current_win() == win then
+      vim.api.nvim_feedkeys("i", "n", false)
+    end
+  end)
 
   local function close()
     if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
     vim.cmd("stopinsert")
   end
-  local function submit()
+  local function cancel()
+    close()
+    if on_cancel then on_cancel() end
+  end
+  local function submit(tag)
     local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
     close()
-    on_submit(vim.trim(text))
+    on_submit(vim.trim(text), tag)
   end
   local function map(mode, lhs, fn)
     vim.keymap.set(mode, lhs, fn, { buffer = buf, nowait = true, silent = true })
   end
-  map("n", "<C-s>", submit)
-  map("i", "<C-s>", submit)
-  map("n", "<Esc>", close)
-  map("n", "q",     close)
+  for lhs, tag in pairs(opts.submits or { ["<C-s>"] = "" }) do
+    map({ "n", "i" }, lhs, function() submit(tag) end)
+  end
+  map("n", "<Esc>", cancel)
+  map("n", "q",     cancel)
   -- A one-line prompt has nothing to edit, so <Esc> may as well cancel outright
   -- instead of dropping to normal mode first. A body keeps <Esc> for normal
   -- mode, so vim motions still work while writing it.
-  if rows == 1 then map("i", "<Esc>", close) end
+  if rows == 1 then map("i", "<Esc>", cancel) end
 end
 
 function M.open_url(url)

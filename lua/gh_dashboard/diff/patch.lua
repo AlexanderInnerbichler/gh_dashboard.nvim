@@ -126,53 +126,39 @@ function M.in_ranges(ranges, line)
   return false
 end
 
---- True when a hunk only adds or removes whitespace.
-function M.is_whitespace_only(hunk)
-  local removed, added = {}, {}
-  for _, l in ipairs(hunk.lines) do
-    if     l.kind == "-" then table.insert(removed, (l.text:gsub("%s+", "")))
-    elseif l.kind == "+" then table.insert(added,   (l.text:gsub("%s+", ""))) end
-  end
-  if #removed == 0 and #added == 0 then return true end
-  return table.concat(removed) == table.concat(added)
-end
-
 -- ── unified rendering ──────────────────────────────────────────────────────
 
 --- Render hunks as a unified patch buffer.
---- Returns lines, hl_specs, line_map (buf line -> {line, side}), hunk_lines.
-function M.render_unified(hunks, skip_whitespace)
-  local lines, hl_specs, line_map, hunk_lines = {}, {}, {}, {}
+--- Returns lines, hl_specs, line_map (buf line -> {line, side}).
+function M.render_unified(hunks)
+  local lines, hl_specs, line_map = {}, {}, {}
 
   for _, h in ipairs(hunks) do
-    if not (skip_whitespace and M.is_whitespace_only(h)) then
-      table.insert(lines, h.header)
-      table.insert(hunk_lines, #lines)
-      table.insert(hl_specs, { hl = "GhDiffHunk", line = #lines - 1, col_s = 0, col_e = -1 })
+    table.insert(lines, h.header)
+    table.insert(hl_specs, { hl = "GhDiffHunk", line = #lines - 1, col_s = 0, col_e = -1 })
 
-      local old_n, new_n = h.old_start - 1, h.new_start - 1
-      for _, l in ipairs(h.lines) do
-        table.insert(lines, l.kind .. l.text)
-        local ln = #lines - 1
-        if l.kind == "+" then
-          new_n = new_n + 1
-          line_map[ln] = { line = new_n, side = "RIGHT" }
-          table.insert(hl_specs, { hl = "GhDiffAdd", line = ln, col_s = 0, col_e = -1 })
-        elseif l.kind == "-" then
-          old_n = old_n + 1
-          line_map[ln] = { line = old_n, side = "LEFT" }
-          table.insert(hl_specs, { hl = "GhDiffDel", line = ln, col_s = 0, col_e = -1 })
-        else
-          old_n, new_n = old_n + 1, new_n + 1
-          line_map[ln] = { line = new_n, side = "RIGHT" }
-        end
+    local old_n, new_n = h.old_start - 1, h.new_start - 1
+    for _, l in ipairs(h.lines) do
+      table.insert(lines, l.kind .. l.text)
+      local ln = #lines - 1
+      if l.kind == "+" then
+        new_n = new_n + 1
+        line_map[ln] = { line = new_n, side = "RIGHT" }
+        table.insert(hl_specs, { hl = "GhDiffAdd", line = ln, col_s = 0, col_e = -1 })
+      elseif l.kind == "-" then
+        old_n = old_n + 1
+        line_map[ln] = { line = old_n, side = "LEFT" }
+        table.insert(hl_specs, { hl = "GhDiffDel", line = ln, col_s = 0, col_e = -1 })
+      else
+        old_n, new_n = old_n + 1, new_n + 1
+        line_map[ln] = { line = new_n, side = "RIGHT" }
       end
-      table.insert(lines, "")
     end
+    table.insert(lines, "")
   end
 
   if #lines == 0 then lines = { "  (no changes to show)" } end
-  return lines, hl_specs, line_map, hunk_lines
+  return lines, hl_specs, line_map
 end
 
 return M

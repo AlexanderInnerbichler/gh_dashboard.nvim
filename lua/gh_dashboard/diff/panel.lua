@@ -29,34 +29,15 @@ function M.is_generated(path, globs)
   return false
 end
 
-local SORTERS = {
-  path   = function(a, b) return a.path < b.path end,
-  size   = function(a, b)
-    local ca, cb = a.add + a.del, b.add + b.del
-    if ca ~= cb then return ca > cb end
-    return a.path < b.path
-  end,
-  status = function(a, b)
-    if a.status ~= b.status then return a.status < b.status end
-    return a.path < b.path
-  end,
-}
-
-M.SORT_ORDER = { "path", "size", "status" }
-
---- Apply the current filter / generated-file toggle / sort to the file list.
+--- Drop generated files, then order by path.
 function M.arrange(files, opts)
   local out = {}
-  local needle = (opts.filter or ""):lower()
   for _, f in ipairs(files) do
-    local keep = true
-    if needle ~= "" and not f.path:lower():find(needle, 1, true) then keep = false end
-    if keep and opts.hide_generated and M.is_generated(f.path, opts.generated_globs) then
-      keep = false
+    if not (opts.hide_generated and M.is_generated(f.path, opts.generated_globs)) then
+      table.insert(out, f)
     end
-    if keep then table.insert(out, f) end
   end
-  table.sort(out, SORTERS[opts.sort] or SORTERS.path)
+  table.sort(out, function(a, b) return a.path < b.path end)
   return out
 end
 
@@ -111,15 +92,7 @@ function M.render(ctx)
   end
 
   do
-    local notes = {}
-    if ctx.filter ~= ""    then table.insert(notes, "/" .. ctx.filter) end
-    if ctx.hide_generated  then table.insert(notes, "no-gen")          end
-    if ctx.skip_whitespace then table.insert(notes, "no-ws")           end
-    table.insert(notes, ctx.sort)
-    if #ctx.pending > 0 then
-      table.insert(notes, string.format("%d pending", #ctx.pending))
-    end
-    local right = table.concat(notes, "  ")
+    local right = #ctx.pending > 0 and string.format("%d pending", #ctx.pending) or ""
     local left  = string.format("  %d files  +%d  −%d", #ctx.files, total_add, total_del)
     local ln    = add(utils.dpad(left, math.max(0, width - #right - 2)) .. right)
     local plus, minus = left:find("%+"), left:find("−")
@@ -139,12 +112,11 @@ function M.render(ctx)
 
   -- one line per file: the picker is wide, so vertical space is the scarce axis
   local counts_w = 14
-  local name_w   = math.max(16, width - 7 - counts_w - BAR_W - 2)
+  local name_w   = math.max(16, width - 5 - counts_w - BAR_W - 2)
 
   for i, f in ipairs(ctx.visible) do
-    local mark   = ctx.viewed[f.path] and "✓" or " "
     local status = STATUS_CHAR[f.status] or "?"
-    local prefix = "  " .. mark .. " " .. status .. "  "
+    local prefix = "  " .. status .. "  "
 
     local shown  = utils.dpad(utils.dtrunc(f.path, name_w), name_w)
     local counts = utils.dpad(string.format("+%-5d −%-5d", f.add, f.del), counts_w)
@@ -153,9 +125,8 @@ function M.render(ctx)
     local ln = add(prefix .. shown .. counts .. graph)
     row_map[ln] = i
 
-    table.insert(hl_specs, { hl = "GhDiffViewed", line = ln, col_s = 2, col_e = 5 })
     table.insert(hl_specs, {
-      hl = STATUS_HL[status] or "GhReaderMeta", line = ln, col_s = 5, col_e = 6,
+      hl = STATUS_HL[status] or "GhReaderMeta", line = ln, col_s = 2, col_e = 3,
     })
 
     local name_s = #prefix

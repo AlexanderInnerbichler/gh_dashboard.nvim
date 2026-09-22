@@ -12,8 +12,6 @@ local ns_panel = vim.api.nvim_create_namespace("GhDiffPanel")
 local ns_base  = vim.api.nvim_create_namespace("GhDiffBaseComments")
 local ns_head  = vim.api.nvim_create_namespace("GhDiffHeadComments")
 
-local VIEWED_PATH = vim.fn.expand("~/.cache/nvim/gh-dashboard-viewed.json")
-
 -- ── state ──────────────────────────────────────────────────────────────────
 
 local state = {}
@@ -26,24 +24,19 @@ local function reset_state()
     base_win       = nil, base_buf  = nil,
     head_win       = nil, head_buf  = nil,
     item           = nil,
+    review_key     = "",
     meta           = nil,
     files          = {},
     visible        = {},
     index          = 0,
-    viewed         = {},
     layout         = "side_by_side",
-    sort           = "path",
-    filter         = "",
     hide_generated = true,
-    skip_whitespace = false,
     comments       = {},
     line_of_index  = {},
     row_map        = {},
     hunks          = {},
     ranges         = {},
     line_map       = {},
-    hunk_lines     = {},
-    marked         = { base = {}, head = {} },
     blob_cache     = {},
     req            = 0,
     syncing        = false,
@@ -71,12 +64,11 @@ local function apply_diffopt()
   if not state.saved_diffopt then return end
   local parts = {}
   for _, p in ipairs(vim.split(state.saved_diffopt, ",", { plain = true })) do
-    if not p:match("^context:") and not p:match("^iwhite") then
+    if not p:match("^context:") then
       table.insert(parts, p)
     end
   end
   table.insert(parts, "context:" .. opts().context)
-  if state.skip_whitespace then table.insert(parts, "iwhiteall") end
   vim.o.diffopt = table.concat(parts, ",")
   for _, win in ipairs({ state.base_win, state.head_win }) do
     if win and vim.api.nvim_win_is_valid(win) and vim.wo[win].diff then
@@ -91,44 +83,6 @@ local function restore_diffopt()
     vim.o.diffopt = state.saved_diffopt
     state.saved_diffopt = nil
   end
-end
-
--- ── viewed-state persistence ───────────────────────────────────────────────
-
-local function viewed_key()
-  return string.format("%s#%d@%s", state.item.repo, state.item.number,
-                       (state.meta and state.meta.head_sha or ""):sub(1, 12))
-end
-
-local function read_viewed_store()
-  local fd = io.open(VIEWED_PATH, "r")
-  if not fd then return {} end
-  local raw = fd:read("*a")
-  fd:close()
-  local ok, data = pcall(vim.json.decode, raw)
-  return (ok and type(data) == "table") and data or {}
-end
-
-local function load_viewed()
-  local store = read_viewed_store()
-  local entry = store[viewed_key()]
-  state.viewed = type(entry) == "table" and entry or {}
-end
-
-local function save_viewed()
-  local store = read_viewed_store()
-  local key   = viewed_key()
-  -- prune before inserting, and never evict the entry we are about to write
-  local keys = vim.tbl_keys(store)
-  for i = 1, #keys - 50 do
-    if keys[i] ~= key then store[keys[i]] = nil end
-  end
-  store[key] = state.viewed
-  vim.fn.mkdir(vim.fn.fnamemodify(VIEWED_PATH, ":h"), "p")
-  local fd = io.open(VIEWED_PATH, "w")
-  if not fd then return end
-  fd:write(vim.json.encode(store))
-  fd:close()
 end
 
 -- ── layout ─────────────────────────────────────────────────────────────────
@@ -202,12 +156,8 @@ local function picker_open()
 end
 
 local function picker_title()
-  local viewed_n = 0
-  for _, f in ipairs(state.files) do
-    if state.viewed[f.path] then viewed_n = viewed_n + 1 end
-  end
-  return string.format(" PR #%d   %s   %d/%d viewed ",
-    state.item.number, state.item.repo, viewed_n, #state.files)
+  return string.format(" PR #%d   %s   %d files ",
+    state.item.number, state.item.repo, #state.files)
 end
 
 local function close_picker()
@@ -225,7 +175,7 @@ local function comments_by_path()
       table.insert(by[c.path], c)
     end
   end
-  for _, c in ipairs(review.all()) do
+  for _, c in ipairs(review.all(state.review_key)) do
     by[c.path] = by[c.path] or {}
     table.insert(by[c.path], c)
   end
@@ -247,12 +197,7 @@ local function render_panel()
     width            = state.picker_width,
     files            = state.files,
     visible          = state.visible,
-    viewed           = state.viewed,
-    pending          = review.all(),
-    filter           = state.filter,
-    sort             = state.sort,
-    hide_generated   = state.hide_generated,
-    skip_whitespace  = state.skip_whitespace,
+    pending          = review.all(state.review_key),
     comments_by_path = comments_by_path(),
     outdated         = outdated_comments(),
   })
@@ -281,12 +226,10 @@ end
 --- The keys worth knowing, longest set that fits. A split layout has no
 --- floating-window footer, so the winbar is the only pinned place for them.
 local HINT_TIERS = {
-  "q files  <Tab> next  ]h hunk  <Spc> viewed  c comment  A submit  x unified  ? help",
-  "q files  <Tab> next  ]h hunk  <Spc> viewed  c comment  A submit  ? help",
-  "q files  <Tab> next  ]h hunk  <Spc> viewed  c comment  ? help",
-  "q files  <Tab> next  <Spc> viewed  c comment  ? help",
-  "q files  <Spc> viewed  c comment  ? help",
-  "q files  ? help",
+  "q files  <Tab> next file  c comment on selection  A submit review  ? help",
+  "q files  <Tab> next  c comment  A submit  ? help",
+  "c comment  A submit  ? help",
+  "? help",
 }
 
 local function hints_for(avail)
@@ -320,7 +263,7 @@ local function open_picker()
     border     = "rounded",
     title      = picker_title(),
     title_pos  = "center",
-    footer     = " <CR> open   <Space> viewed   S sort   f filter   q close ",
+    footer     = " <CR> open   q close ",
     footer_pos = "center",
   })
   vim.wo[state.picker_win].number         = false
@@ -363,7 +306,7 @@ local function entries_for(path, side)
       table.insert(out, c)
     end
   end
-  for _, c in ipairs(review.for_path(path)) do
+  for _, c in ipairs(review.for_path(state.review_key, path)) do
     if c.side == side then
       table.insert(out, vim.tbl_extend("force", c, { pending = true }))
     end
@@ -384,12 +327,11 @@ local function draw_comments(f)
         end
       end
     end
-    state.marked.head = view.overlay_comments(state.head_buf, ns_head, remapped, width)
-    state.marked.base = {}
+    view.overlay_comments(state.head_buf, ns_head, remapped, width)
   else
-    state.marked.head = view.overlay_comments(state.head_buf, ns_head, entries_for(f.path, "RIGHT"), width)
+    view.overlay_comments(state.head_buf, ns_head, entries_for(f.path, "RIGHT"), width)
     if state.base_buf then
-      state.marked.base = view.overlay_comments(state.base_buf, ns_base, entries_for(f.path, "LEFT"), width)
+      view.overlay_comments(state.base_buf, ns_base, entries_for(f.path, "LEFT"), width)
     end
   end
 end
@@ -406,9 +348,8 @@ local function prefetch(idx)
 end
 
 local function show_unified(f)
-  local lines, hl_specs, line_map, hunk_lines =
-    patch.render_unified(state.hunks, state.skip_whitespace)
-  state.line_map, state.hunk_lines = line_map, hunk_lines
+  local lines, hl_specs, line_map = patch.render_unified(state.hunks)
+  state.line_map = line_map
   view.disable_diff({ state.head_win })
   utils.write_buf(state.head_buf, ns_head, lines, hl_specs)
   vim.bo[state.head_buf].filetype = "diff"
@@ -499,60 +440,11 @@ local function goto_file(delta)
   open_file(next_idx)
 end
 
-local function goto_unviewed()
-  for i = state.index + 1, #state.visible do
-    if not state.viewed[state.visible[i].path] then open_file(i) return end
-  end
-  for i = 1, state.index do
-    if not state.viewed[state.visible[i].path] then open_file(i) return end
-  end
-  vim.notify("All files viewed", vim.log.levels.INFO)
-end
+-- ── file list ──────────────────────────────────────────────────────────────
 
-local function goto_hunk(delta)
-  if state.layout == "unified" then
-    local cur = vim.api.nvim_win_get_cursor(0)[1]
-    local targets = state.hunk_lines
-    if delta > 0 then
-      for _, ln in ipairs(targets) do
-        if ln > cur then pcall(vim.api.nvim_win_set_cursor, 0, { ln, 0 }) return end
-      end
-    else
-      for i = #targets, 1, -1 do
-        if targets[i] < cur then pcall(vim.api.nvim_win_set_cursor, 0, { targets[i], 0 }) return end
-      end
-    end
-    goto_file(delta)
-  else
-    local before = vim.api.nvim_win_get_cursor(0)[1]
-    pcall(vim.cmd, "normal! " .. (delta > 0 and "]c" or "[c"))
-    if vim.api.nvim_win_get_cursor(0)[1] == before then goto_file(delta) end
-  end
-end
-
-local function goto_comment(delta)
-  local win = vim.api.nvim_get_current_win()
-  local marks = win == state.base_win and state.marked.base or state.marked.head
-  local cur   = vim.api.nvim_win_get_cursor(0)[1]
-  if delta > 0 then
-    for _, ln in ipairs(marks) do
-      if ln > cur then pcall(vim.api.nvim_win_set_cursor, 0, { ln, 0 }) return end
-    end
-  else
-    for i = #marks, 1, -1 do
-      if marks[i] < cur then pcall(vim.api.nvim_win_set_cursor, 0, { marks[i], 0 }) return end
-    end
-  end
-  vim.notify("No more comments in this file", vim.log.levels.INFO)
-end
-
--- ── file list refiltering ──────────────────────────────────────────────────
-
-local function refilter(keep_path)
+local function arrange_files(keep_path)
   keep_path = keep_path or (state.visible[state.index] and state.visible[state.index].path)
   state.visible = panel.arrange(state.files, {
-    filter          = state.filter,
-    sort            = state.sort,
     hide_generated  = state.hide_generated,
     generated_globs = opts().generated_globs,
   })
@@ -563,21 +455,13 @@ local function refilter(keep_path)
   if #state.visible == 0 then
     state.index = 0
     render_panel()
-    show_message("no files match the current filter")
+    show_message("every changed file is hidden as generated")
   else
     open_file(state.index)
   end
 end
 
 -- ── actions ────────────────────────────────────────────────────────────────
-
-local function toggle_viewed()
-  local f = state.visible[state.index]
-  if not f then return end
-  state.viewed[f.path] = (not state.viewed[f.path]) or nil
-  save_viewed()
-  if state.viewed[f.path] then goto_unviewed() else render_panel() end
-end
 
 local function comment_target(mode)
   local win = vim.api.nvim_get_current_win()
@@ -626,63 +510,98 @@ local function add_comment(mode)
     utils.prompt({ title = "Review comment", lines = 12,
                    footer = " <C-s> queue   <Esc> then <Esc> cancel" }, function(body)
       if body == "" then return end
-      review.add(vim.tbl_extend("force", target, { body = body, login = "you" }))
+      review.add(state.review_key,
+                 vim.tbl_extend("force", target, { body = body, login = "you" }))
       local f = state.visible[state.index]
       if f then draw_comments(f) end
       render_panel()
-      vim.notify(string.format("Queued (%d pending) — press A to submit", #review.all()),
+      vim.notify(string.format("Queued (%d pending) — press A to submit",
+                                review.count(state.review_key)),
                  vim.log.levels.INFO)
     end)
   end)
 end
 
-local function submit_review()
-  local pending = review.all()
-  vim.ui.select(
-    { "Comment", "Approve", "Request Changes", "Cancel" },
-    { prompt = string.format("Submit review with %d inline comment%s:",
-                             #pending, #pending == 1 and "" or "s") },
-    function(choice)
-      if not choice or choice == "Cancel" then return end
-      local event = choice == "Approve" and "APPROVE"
-                 or choice == "Request Changes" and "REQUEST_CHANGES"
-                 or "COMMENT"
-      utils.prompt({ title = choice .. " — summary", lines = 12 }, function(body)
-        if event == "COMMENT" and body == "" and #pending == 0 then
-          vim.notify("Nothing to submit", vim.log.levels.WARN)
-          return
-        end
-        review.submit(state.item.number, state.item.repo, state.meta.head_sha,
-                      event, body, function(err)
-          if err then
-            vim.notify("Review failed: " .. err, vim.log.levels.ERROR)
-            return
-          end
-          vim.notify("Review submitted", vim.log.levels.INFO)
-          fetch.fetch_review_comments(state.item.number, state.item.repo, function(list)
-            state.comments = list
-            render_panel()
-            local f = state.visible[state.index]
-            if f then draw_comments(f) end
-          end)
-        end)
-      end)
-    end
-  )
+--- The key you submit with picks the review event, so there is one float
+--- instead of a picker feeding a second one. Opening the summary prompt from
+--- inside vim.ui.select's callback let that picker's own teardown close it
+--- again, which dropped whole reviews without a word.
+local SUBMITS = {
+  ["<C-s>"] = "COMMENT",
+  ["<C-a>"] = "APPROVE",
+  ["<C-r>"] = "REQUEST_CHANGES",
+  ["<C-d>"] = "DISCARD",
+}
+
+local function refresh_comments()
+  fetch.fetch_review_comments(state.item.number, state.item.repo, function(list)
+    if not is_open() then return end
+    state.comments = list
+    render_panel()
+    local f = state.visible[state.index]
+    if f then draw_comments(f) end
+  end)
 end
 
-local function web_url(with_line)
+local function queued_label(n)
+  return string.format("%d comment%s", n, n == 1 and "" or "s")
+end
+
+--- Send the queue as one review. A failed submit leaves the queue alone, so a
+--- rejected review can be retried rather than retyped.
+local function post_review(event, body, pending)
+  review.submit(state.review_key, state.item.number, state.item.repo,
+                state.meta.head_sha, event, body, function(err)
+    if err then
+      vim.notify("Review failed: " .. err .. " — " .. queued_label(pending) .. " still queued",
+                 vim.log.levels.ERROR)
+      return
+    end
+    vim.notify("Review submitted", vim.log.levels.INFO)
+    refresh_comments()
+  end)
+end
+
+local function discard_review(pending)
+  review.clear(state.review_key)
+  render_panel()
   local f = state.visible[state.index]
-  if not f then return nil end
-  local base = string.format("https://github.com/%s/pull/%d/files",
-                             state.item.repo, state.item.number)
-  local anchor = vim.fn.sha256(f.path):sub(1, 64)
-  if with_line and state.meta then
-    return string.format("https://github.com/%s/blob/%s/%s#L%d",
-      state.item.repo, state.meta.head_sha, f.path,
-      vim.api.nvim_win_get_cursor(0)[1])
-  end
-  return base .. "#diff-" .. anchor
+  if f then draw_comments(f) end
+  vim.notify("Discarded " .. queued_label(pending), vim.log.levels.INFO)
+end
+
+--- One float, and the key you submit with picks the event. Feeding the summary
+--- prompt from a vim.ui.select meant it opened inside that picker's callback,
+--- and the picker's own teardown left it in normal mode -- so the summary you
+--- typed ran as commands and the review went nowhere, silently.
+local function submit_review()
+  local pending = review.count(state.review_key)
+  local queued  = queued_label(pending)
+
+  utils.prompt({
+    title   = pending == 0 and "Review — summary only" or ("Review — " .. queued .. " queued"),
+    lines   = 12,
+    submits = SUBMITS,
+    footer  = " <C-s> comment   <C-a> approve   <C-r> request changes"
+           .. "   <C-d> discard   <Esc><Esc> cancel ",
+  }, function(body, event)
+    if event == "DISCARD" then
+      discard_review(pending)
+    elseif body == "" and pending == 0 then
+      vim.notify("Nothing to submit", vim.log.levels.WARN)
+    elseif body == "" and event ~= "APPROVE" then
+      -- GitHub rejects a comment or request-changes review carrying no summary,
+      -- and that rejection takes the queued comments down with it.
+      vim.notify("GitHub needs a summary for this review — nothing sent, "
+                 .. queued .. " still queued", vim.log.levels.WARN)
+    else
+      post_review(event, body, pending)
+    end
+  end, function()
+    if pending > 0 then
+      vim.notify("Review not sent — " .. queued .. " still queued", vim.log.levels.WARN)
+    end
+  end)
 end
 
 -- ── keymaps ────────────────────────────────────────────────────────────────
@@ -701,98 +620,20 @@ local function map_all(lhs, fn, mode)
   end
 end
 
---- File-list options live on the panel only, so f/F/S/w stay native motions in
---- the diff windows, where you are reading code.
-local function map_panel(lhs, fn)
-  if state.panel_buf and vim.api.nvim_buf_is_valid(state.panel_buf) then
-    vim.keymap.set("n", lhs, fn, { buffer = state.panel_buf, nowait = true, silent = true })
-  end
-end
-
 local function focus(win)
   if win and vim.api.nvim_win_is_valid(win) then vim.api.nvim_set_current_win(win) end
 end
 
+--- Six keys. Everything else the viewer bound was a command competing for
+--- attention with the one that matters: select a snippet, comment on it.
 local function register_keymaps()
-  map_all("q",         function() open_picker() end)
-  map_all("<Esc>",     function() open_picker() end)
-  map_all("<Tab>",     function() goto_file(1) end)
-  map_all("<S-Tab>",   function() goto_file(-1) end)
-  map_all("]f",        function() goto_file(1) end)
-  map_all("[f",        function() goto_file(-1) end)
-  map_all("]h",        function() goto_hunk(1) end)
-  map_all("[h",        function() goto_hunk(-1) end)
-  map_all("]x",        function() goto_comment(1) end)
-  map_all("[x",        function() goto_comment(-1) end)
-  map_all("u",         goto_unviewed)
-  map_all("<Space>",   toggle_viewed)
-  map_all("c",         function() add_comment("normal") end)
-  map_all("c",         function() add_comment("visual") end, "x")
-  map_all("A",         submit_review)
-  map_all("D", function()
-    if #review.all() == 0 then
-      vim.notify("No pending comments", vim.log.levels.INFO)
-      return
-    end
-    vim.ui.input({ prompt = "Discard " .. #review.all() .. " pending comment(s)? (yes/no): " },
-      function(ans)
-        if ans ~= "yes" then return end
-        review.clear()
-        render_panel()
-        local f = state.visible[state.index]
-        if f then draw_comments(f) end
-      end)
-  end)
-  map_all("s", function()
-    state.layout = state.layout == "unified" and "side_by_side" or "unified"
-    apply_layout()
-    register_keymaps()
-    open_file(state.index)
-    focus(state.head_win)
-  end)
-  map_panel("S", function()
-    local order = panel.SORT_ORDER
-    local at = 1
-    for i, s in ipairs(order) do if s == state.sort then at = i end end
-    state.sort = order[at % #order + 1]
-    refilter()
-  end)
-  map_panel("f", function()
-    vim.ui.input({ prompt = "Filter files: ", default = state.filter }, function(input)
-      if input == nil then return end
-      state.filter = input
-      refilter()
-    end)
-  end)
-  map_panel("F", function()
-    state.hide_generated = not state.hide_generated
-    refilter()
-  end)
-  map_panel("w", function()
-    state.skip_whitespace = not state.skip_whitespace
-    if state.layout == "unified" then
-      open_file(state.index)
-    else
-      apply_diffopt()
-      render_panel()
-    end
-    vim.notify("Whitespace-only changes " .. (state.skip_whitespace and "hidden" or "shown"),
-               vim.log.levels.INFO)
-  end)
-  map_all("r", function() M.open(state.item) end)
-  map_all("O", function()
-    local url = web_url(false)
-    if url then utils.open_url(url) end
-  end)
-  map_all("gy", function()
-    local url = web_url(true)
-    if not url then return end
-    vim.fn.setreg("+", url)
-    vim.fn.setreg('"', url)
-    vim.notify("Copied " .. url, vim.log.levels.INFO)
-  end)
-  map_all("<C-h>", function() open_picker() end)
-  map_all("<C-l>", function() focus(state.head_win) end)
+  map_all("q",       function() open_picker() end)
+  map_all("<Esc>",   function() open_picker() end)
+  map_all("<Tab>",   function() goto_file(1) end)
+  map_all("<S-Tab>", function() goto_file(-1) end)
+  map_all("c",       function() add_comment("normal") end)
+  map_all("c",       function() add_comment("visual") end, "x")
+  map_all("A",       submit_review)
 
   for _, buf in ipairs(bufs()) do
     if buf and vim.api.nvim_buf_is_valid(buf) then
@@ -888,7 +729,6 @@ function M.open(item)
   local was_open = is_open()
   local keep     = was_open and state.visible[state.index] and state.visible[state.index].path or nil
   local layout   = was_open and state.layout or opts().layout
-  local viewed_cache = was_open and state.viewed or nil
 
   if was_open then M.close() end
 
@@ -896,8 +736,7 @@ function M.open(item)
   state.item           = item
   state.layout         = layout
   state.hide_generated = opts().hide_generated
-  state.viewed         = viewed_cache or {}
-  review.reset(item.repo .. "#" .. item.number)
+  state.review_key     = review.key(item.repo, item.number)
 
   local tag = "GhDiff-" .. item.number
   state.panel_buf = view.new_buf(tag)
@@ -928,22 +767,15 @@ function M.open(item)
       utils.write_buf(state.panel_buf, ns_panel, { "", "  ✗ " .. utils.sl(files_err) }, {})
       return
     end
-    load_viewed()
     if #state.files == 0 then
       utils.write_buf(state.panel_buf, ns_panel, { "", "  (no changed files)" }, {})
       show_message("this pull request has no file changes")
       return
     end
     close_picker()
-    refilter(keep)
+    arrange_files(keep)
     open_picker()
-    fetch.fetch_review_comments(item.number, item.repo, function(list)
-      if not is_open() then return end
-      state.comments = list
-      render_panel()
-      local f = state.visible[state.index]
-      if f then draw_comments(f) end
-    end)
+    refresh_comments()
   end
 
   fetch.fetch_meta(item.number, item.repo, function(err, meta)

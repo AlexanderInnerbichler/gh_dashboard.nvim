@@ -129,7 +129,6 @@ local function wrap(text, width)
 end
 
 --- Draw review comments as virtual lines under the line they target.
---- Returns the sorted list of 1-based lines that carry a comment.
 function M.overlay_comments(buf, ns, entries, width)
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   local anchored, total = {}, vim.api.nvim_buf_line_count(buf)
@@ -142,7 +141,6 @@ function M.overlay_comments(buf, ns, entries, width)
     end
   end
 
-  local marked = {}
   for line, list in pairs(anchored) do
     local virt = {}
     for _, c in ipairs(list) do
@@ -156,11 +154,7 @@ function M.overlay_comments(buf, ns, entries, width)
     end
     table.insert(virt, { { "", "GhDiffCommentBody" } })
     vim.api.nvim_buf_set_extmark(buf, ns, line - 1, 0, { virt_lines = virt })
-    table.insert(marked, line)
   end
-
-  table.sort(marked)
-  return marked
 end
 
 -- ── placeholder content ────────────────────────────────────────────────────

@@ -79,75 +79,75 @@ require("gh_dashboard").setup({
 every changed file. `<CR>` takes you into the diff; `q` takes you back out to the picker.
 
 ```
-╭──────── PR #9  you/repo  3/14 viewed ─────────╮
-│  14 files  +1911  −1927            no-gen  path│
+╭─────────── PR #9  you/repo  14 files ───────────╮
+│  14 files  +1911  −1927               2 pending │
 │─────────────────────────────────────────────────│
-│  ✓ M  lua/gh_dashboard/init.lua  +39  −732 ▇▇▇▇▁│
-│    D  lua/gh_dashboard/reader.lua +0 −1131 ▇▇▇▇▇│
-│    A  lua/gh_dashboard/reader/init.lua +432 ▇▇▁▁│
-╰─── <CR> open  <Space> viewed  S sort  q close ╯
+│  M  lua/gh_dashboard/init.lua    +39  −732 ▇▇▇▇▁│
+│  D  lua/gh_dashboard/reader.lua   +0 −1131 ▇▇▇▇▇│
+│  A  lua/gh_dashboard/reader/init.lua +432  ▇▇▁▁▁│
+╰──────────── <CR> open   q close ────────────────╯
 ```
 
 Inside, the diff takes the full width of the terminal:
 
 ```
- base  master                         │ lua/gh_dashboard/init.lua    q files  <Tab> next  ]h hunk  ? help
-   1 local M = {}                     │   1 local M = {}
-   2 local heatmap = require(…)       │   2 local heatmap    = require(…)
-     ------------------------------   │   3 local highlights = require(…)
+ base  master                 │ lua/gh_dashboard/init.lua  q files  <Tab> next file  c comment on selection  A submit review  ? help
+   1 local M = {}             │   1 local M = {}
+   2 local heatmap = require(…)│   2 local heatmap    = require(…)
+     ---------------------------│   3 local highlights = require(…)
 ```
 
 Both sides are real buffers with the file's own filetype, so you get treesitter syntax
 highlighting on top of Neovim's diff highlighting — including character-level intra-line
 diffs. Unchanged regions are folded away (`zo` to expand). The picker shows every changed
 file with its status, `+`/`−` counts and a bar scaled to the largest file in the PR.
+Generated files (lockfiles, `dist/`, minified bundles) are hidden; `diff.generated_globs`
+decides which.
 
 Files load lazily — one request for the whole file list, then one blob per file as you open
 it, with the next file prefetched in the background.
-
-The most-used keys sit in the winbar above the diff, trimmed to whatever the window fits;
-`?` lists all of them.
 
 `:GhDiff` with no argument diffs the pull request for the current branch. `:GhDiff 42` infers
 the repo from the working directory; `:GhDiff 42 owner/repo` targets any repo.
 
 ### Diff keys
 
+Selecting code and commenting on it is the job, so the viewer binds six keys and leaves
+every other one to Neovim:
+
 | Key | Action |
 |-----|--------|
-| `<CR>` / `o` | Open the file under the cursor (picker) |
+| `<CR>` / `o` | Open the file under the cursor *(picker)* |
 | `<Tab>` / `<S-Tab>` | Next / previous file |
-| `]f` / `[f` | Next / previous file |
-| `]h` / `[h` | Next / previous hunk |
-| `]x` / `[x` | Next / previous review comment |
-| `<Space>` | Mark viewed, jump to next unviewed |
-| `u` | Jump to next unviewed file |
-| `s` | Toggle side-by-side / unified split |
-| `c` | Queue a review comment (normal line or visual range) |
-| `A` | Submit review with all queued comments |
-| `D` | Discard queued comments |
-| `S` | Cycle sort: path / change size / status *(picker)* |
-| `f` / `F` | Filter files by substring / toggle generated files *(picker)* |
-| `w` | Toggle whitespace-only changes *(picker)* |
-| `zo` / `zc` / `zR` / `zM` | Folds |
-| `O` / `gy` | Open on github.com / yank a permalink |
-| `<C-h>` | Reopen the file picker |
-| `r` | Refresh |
-| `q` | In the diff: back to the picker  In the picker: close |
+| `c` | Comment on the cursor line, or on the visual selection |
+| `A` | Submit the review |
+| `q` / `<Esc>` | In the diff: back to the picker  In the picker: close |
+| `?` | Help |
 
-Keys marked *(picker)* are bound in the picker only, so `w`, `f`, `F` and `S` stay native
-motions in the diff windows.
-
-Which files you have marked viewed is remembered per PR and reset when the PR gets new
-commits.
+Everything else stays a native motion — search, `{`/`}`, and folds (`zo`, `zc`, `zR`, `zM`)
+behave exactly as they do in any other buffer.
 
 ### Reviewing
 
-`c` queues an inline comment rather than posting it immediately — comments show up under
-their line tagged `[pending]`, and `A` submits all of them as a **single** GitHub review
-(approve, request changes, or comment). Existing review comments are rendered under the
-lines they target; comments GitHub can no longer anchor are listed at the bottom of the file
-panel instead of being dropped.
+Select the lines you mean and press `c`. The comment is queued rather than posted, shown
+under its line tagged `[pending]`, and `A` submits every queued comment as a **single**
+GitHub review. The review prompt takes the summary, and the key you submit it with picks
+the verdict:
+
+| Key | Submits as |
+|-----|------------|
+| `<C-s>` | Comment |
+| `<C-a>` | Approve |
+| `<C-r>` | Request changes |
+| `<C-d>` | Discard the queue instead of sending it |
+
+Existing review comments are rendered under the lines they target; comments GitHub can no
+longer anchor are listed at the bottom of the file panel instead of being dropped.
+
+The queue is per pull request and survives leaving the diff, so opening another PR mid-review
+does not discard what you have written. Nothing clears it but `<C-d>` or a review GitHub
+accepted — a failed or abandoned submit says so and leaves every comment where it was. `a`
+in the reader submits the same review, carrying any comments queued for that PR along with it.
 
 ## Repo View
 
@@ -190,6 +190,7 @@ The same key means the same thing in every view:
 | `:GhNotifications` | Toggle notifications panel |
 | `:GhRepoPicker` | Fuzzy-search and open a repo |
 | `:GhDiff [n] [repo]` | Diff a pull request (current branch if no argument) |
+| `:GhDuck [season] [day\|night]` | Preview a duck scene; `auto` restores the calendar, `panel` opens the controls |
 | `:GhDebug` | Show internal debug info |
 | `:checkhealth gh_dashboard` | Verify setup |
 
