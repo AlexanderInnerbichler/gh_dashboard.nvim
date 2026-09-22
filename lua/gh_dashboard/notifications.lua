@@ -171,7 +171,7 @@ update_title = function()
   for _, item in ipairs(state.items) do
     if item.unread then unread = unread + 1 end
   end
-  local suffix = state.show_all and " · all" or ""
+  local suffix = state.show_all and " (all)" or ""
   local title  = unread > 0
     and (" GitHub Notifications  (" .. unread .. " unread)" .. suffix .. " ")
     or  (" GitHub Notifications" .. suffix .. " ")
@@ -187,40 +187,14 @@ end
 
 local function open_win()
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
-    state.buf = vim.api.nvim_create_buf(false, true)
-    vim.b[state.buf].render_markdown = { enabled = false }
-    vim.bo[state.buf].bufhidden  = "wipe"
-    vim.bo[state.buf].buftype    = "nofile"
-    vim.bo[state.buf].modifiable = false
-    vim.bo[state.buf].filetype   = "text"
+    state.buf = utils.scratch_buf()
   end
 
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.80)
-  local height = math.floor(ui.height * 0.70)
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  state.win = vim.api.nvim_open_win(state.buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " GitHub Notifications ",
-    title_pos  = "center",
-    footer     = " <CR> open  ·  r read  ·  m read all  ·  R refresh  ·  a toggle all  ·  q close ",
-    footer_pos = "center",
+  state.win = utils.float(state.buf, {
+    w = 0.80, h = 0.70, cursorline = true,
+    title  = " GitHub Notifications ",
+    footer = " <CR>/o open   x read   X read all   r refresh   a all/unread   q close ",
   })
-
-  vim.wo[state.win].number         = false
-  vim.wo[state.win].relativenumber = false
-  vim.wo[state.win].signcolumn     = "no"
-  vim.wo[state.win].wrap           = false
-  vim.wo[state.win].cursorline     = true
-  vim.wo[state.win].foldenable     = false
 
   local function bmap(lhs, fn)
     vim.keymap.set("n", lhs, fn, { buffer = state.buf, nowait = true, silent = true })
@@ -247,7 +221,9 @@ local function open_win()
   bmap("<CR>", open_at_cursor)
   bmap("o",    open_at_cursor)
 
-  bmap("r", function()
+  -- x dismisses one item, X dismisses all, matching every other view;
+  -- r stays refresh, which is what it means everywhere else.
+  bmap("x", function()
     local item = item_at_cursor()
     if not item or not item.unread or item.id == "" then return end
     mark_read(item.id, function(err)
@@ -260,7 +236,7 @@ local function open_win()
     end)
   end)
 
-  bmap("m", function()
+  bmap("X", function()
     local unreads = {}
     for _, item in ipairs(state.items) do
       if item.unread and item.id ~= "" then
@@ -280,7 +256,7 @@ local function open_win()
     end
   end)
 
-  bmap("R", fetch)
+  bmap("r", fetch)
 
   bmap("a", function()
     state.show_all = not state.show_all

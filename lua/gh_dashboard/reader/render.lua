@@ -11,17 +11,9 @@ local function separator()
   return "  " .. string.rep("─", CODE_WIDTH + 2)
 end
 
-local function age_string(iso8601)
-  if not iso8601 or iso8601 == vim.NIL then return "" end
-  return utils.age_string(iso8601)
-end
-
-local function safe_str(v)
-  if v == nil or v == vim.NIL then return "" end
-  return tostring(v)
-end
-
-local sl = utils.sl
+local age_string = utils.age_string
+local safe_str   = utils.safe_str
+local sl         = utils.sl
 
 local function state_hl(s)
   local upper = s:upper()
@@ -112,7 +104,7 @@ local function render_comments_section(lines, hl_specs, comments)
   end
   for _, c in ipairs(comments) do
     table.insert(lines, "")
-    local meta = "  @" .. sl(c.author) .. "  ·  " .. age_string(c.created_at)
+    local meta = "  @" .. sl(c.author) .. "   " .. age_string(c.created_at)
     table.insert(lines, meta)
     table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = 0, col_e = -1 })
     table.insert(lines, "  " .. string.rep("╌", CODE_WIDTH))
@@ -131,7 +123,7 @@ local function render_review_comments_section(lines, hl_specs, review_comments)
   table.insert(hl_specs, { hl = "GhReaderSection", line = #lines - 1, col_s = 0, col_e = #header })
   for _, rc in ipairs(review_comments) do
     table.insert(lines, "")
-    local meta = "  @" .. sl(rc.login) .. "  ·  " .. sl(rc.path) .. ":" .. tostring(rc.line or "?")
+    local meta = "  @" .. sl(rc.login) .. "   " .. sl(rc.path) .. ":" .. tostring(rc.line or "?")
     table.insert(lines, meta)
     table.insert(hl_specs, { hl = "GhReaderMeta", line = #lines - 1, col_s = 0, col_e = -1 })
     table.insert(lines, "  " .. string.rep("╌", CODE_WIDTH))
@@ -175,7 +167,7 @@ local function render_reviews_section(lines, hl_specs, reviews)
   for _, r in ipairs(with_body) do
     table.insert(lines, "")
     local state_icon = r.state == "APPROVED" and "✓" or (r.state == "CHANGES_REQUESTED" and "✗" or "·")
-    local meta = "  " .. state_icon .. " @" .. sl(r.author) .. "  ·  " .. r.state:lower():gsub("_", " ") .. "  ·  " .. age_string(r.submitted_at)
+    local meta = "  " .. state_icon .. " @" .. sl(r.author) .. "   " .. r.state:lower():gsub("_", " ") .. "   " .. age_string(r.submitted_at)
     local hl   = r.state == "APPROVED" and "GhReviewApproved" or (r.state == "CHANGES_REQUESTED" and "GhReviewChanges" or "GhReviewComment")
     table.insert(lines, meta)
     table.insert(hl_specs, { hl = hl, line = #lines - 1, col_s = 0, col_e = -1 })
@@ -204,8 +196,8 @@ function M.render_issue(data)
   table.insert(hl_specs, { hl = "GhReaderTitle", line = #lines - 1, col_s = 0, col_e = -1 })
 
   local state_tag  = " " .. data.state .. " "
-  local labels_str = #data.labels > 0 and ("  · " .. table.concat(data.labels, " · ")) or ""
-  local meta       = "  " .. state_tag .. "  @" .. sl(data.author) .. labels_str .. "  ·  " .. age_string(data.created_at)
+  local labels_str = #data.labels > 0 and ("   " .. table.concat(data.labels, "  ")) or ""
+  local meta       = "  " .. state_tag .. "  @" .. sl(data.author) .. labels_str .. "   " .. age_string(data.created_at)
   table.insert(lines, meta)
   table.insert(hl_specs, { hl = state_hl(data.state), line = #lines - 1, col_s = 2, col_e = 2 + #state_tag })
   table.insert(hl_specs, { hl = "GhReaderMeta",       line = #lines - 1, col_s = 2 + #state_tag, col_e = -1 })
@@ -218,7 +210,7 @@ function M.render_issue(data)
   render_comments_section(lines, hl_specs, data.comments)
 
   local popup_title  = "#" .. data.number .. "  " .. sl(data.title):sub(1, 55)
-  local popup_footer = "q back  ·  r refresh  ·  c comment  ·  x close issue"
+  local popup_footer = "q back   r refresh   c comment   x close issue"
   return lines, hl_specs, popup_title, popup_footer
 end
 
@@ -239,7 +231,7 @@ function M.render_pr(data, review_comments)
   table.insert(hl_specs, { hl = "GhReaderTitle", line = #lines - 1, col_s = 0, col_e = -1 })
 
   local state_tag = " " .. data.state .. " "
-  local meta      = "  " .. state_tag .. "  @" .. sl(data.author) .. "  ·  " .. age_string(data.created_at)
+  local meta      = "  " .. state_tag .. "  @" .. sl(data.author) .. "   " .. age_string(data.created_at)
   table.insert(lines, meta)
   table.insert(hl_specs, { hl = state_hl(data.state), line = #lines - 1, col_s = 2, col_e = 2 + #state_tag })
   table.insert(hl_specs, { hl = "GhReaderMeta",       line = #lines - 1, col_s = 2 + #state_tag, col_e = -1 })
@@ -349,7 +341,7 @@ function M.render_pr(data, review_comments)
   render_review_comments_section(lines, hl_specs, review_comments or {})
 
   local popup_title  = "#" .. data.number .. "  " .. sl(data.title):sub(1, 55)
-  local popup_footer = "q back  ·  r refresh  ·  c comment  ·  a review  ·  d diff  ·  m merge"
+  local popup_footer = "q back   r refresh   c comment   a review   d diff   m merge"
   return lines, hl_specs, popup_title, popup_footer
 end
 
@@ -371,67 +363,6 @@ function M.render_readme(data)
   local popup_title  = data.full_name .. "  README"
   local popup_footer = "q back"
   return lines, hl_specs, popup_title, popup_footer
-end
-
-function M.render_diff_content(lines, hl_specs, number, repo, diff_text, err, line_map)
-  local crumb_prefix = "  GitHub Dashboard  ›  "
-  local crumb        = crumb_prefix .. repo .. "  ›  PR #" .. number .. " diff"
-  table.insert(lines, crumb)
-  table.insert(hl_specs, { hl = "GhReaderBreadcrumb", line = #lines - 1, col_s = 0,             col_e = #crumb_prefix })
-  table.insert(hl_specs, { hl = "GhReaderTitle",      line = #lines - 1, col_s = #crumb_prefix, col_e = -1 })
-  table.insert(lines, "")
-
-  if err then
-    local msg = "  ✗ " .. err:gsub("[\n\r]", " ")
-    table.insert(lines, msg)
-    table.insert(hl_specs, { hl = "GhReaderError", line = #lines - 1, col_s = 0, col_e = #msg })
-    return
-  end
-
-  if diff_text == "" then
-    local msg = "  (no diff)"
-    table.insert(lines, msg)
-    table.insert(hl_specs, { hl = "GhReaderEmpty", line = #lines - 1, col_s = 0, col_e = #msg })
-    return
-  end
-
-  local cur_path   = nil
-  local new_line_n = 0
-  local old_line_n = 0
-
-  for raw_line in diff_text:gmatch("[^\n]+") do
-    table.insert(lines, raw_line)
-    local buf_ln = #lines - 1
-
-    if raw_line:match("^diff %-%-git") then
-      cur_path   = raw_line:match(" b/(.+)$")
-      new_line_n = 0
-      old_line_n = 0
-    elseif raw_line:match("^@@") then
-      local ns, nn = raw_line:match("@@ %-(%d+),?%d* %+(%d+),?%d* @@")
-      old_line_n = tonumber(ns or 0) - 1
-      new_line_n = tonumber(nn or 0) - 1
-      table.insert(hl_specs, { hl = "GhDiffHunk", line = buf_ln, col_s = 0, col_e = -1 })
-    elseif raw_line:sub(1, 1) == "+" and not raw_line:match("^%+%+%+") then
-      new_line_n = new_line_n + 1
-      table.insert(hl_specs, { hl = "GhDiffAdd", line = buf_ln, col_s = 0, col_e = -1 })
-      if line_map and cur_path then
-        line_map[buf_ln] = { path = cur_path, line = new_line_n, side = "RIGHT" }
-      end
-    elseif raw_line:sub(1, 1) == "-" and not raw_line:match("^%-%-%-") then
-      old_line_n = old_line_n + 1
-      table.insert(hl_specs, { hl = "GhDiffDel", line = buf_ln, col_s = 0, col_e = -1 })
-      if line_map and cur_path then
-        line_map[buf_ln] = { path = cur_path, line = old_line_n, side = "LEFT" }
-      end
-    elseif raw_line:sub(1, 1) == " " then
-      new_line_n = new_line_n + 1
-      old_line_n = old_line_n + 1
-      if line_map and cur_path then
-        line_map[buf_ln] = { path = cur_path, line = new_line_n, side = "RIGHT" }
-      end
-    end
-  end
 end
 
 return M

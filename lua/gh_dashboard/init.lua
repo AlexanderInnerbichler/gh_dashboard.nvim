@@ -78,14 +78,7 @@ local function apply_render()
   local lines, hl_specs, items, hm_left_pad = render.build(data, state.is_loading, state.is_stale, win_width)
   state.items = items
 
-  vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    local col_e = spec.col_e == -1 and -1 or spec.col_e
-    vim.api.nvim_buf_add_highlight(state.buf, ns, spec.hl, spec.line, spec.col_s, col_e)
-  end
+  utils.write_buf(state.buf, ns, lines, hl_specs)
 
   -- start duck animation in the empty space right of the heatmap
   local heatmap_base = nil
@@ -226,8 +219,8 @@ local function open_win()
   local row    = math.floor((ui.height - height) / 2)
   local col    = math.floor((ui.width  - width)  / 2)
 
-  local footer_default = " <CR> open  ·  s repos  ·  w watch  ·  r refresh  ·  <leader>gw watchlist  ·  <leader>gn notifs  ·  q close "
-  local footer_pr      = " <CR> open  ·  d diff  ·  w watch  ·  r refresh  ·  q close "
+  local footer_default = " <CR> open   w watch   r refresh   <leader>gw watchlist   <leader>gn notifs   q close "
+  local footer_pr      = " <CR> open   d diff   w watch   r refresh   q close "
 
   state.win = vim.api.nvim_open_win(state.buf, true, {
     relative   = "editor",
@@ -270,7 +263,7 @@ local function open_win()
     local cur_line = vim.api.nvim_win_get_cursor(state.win)[1] - 1
     for _, item in ipairs(state.items) do
       if item.line == cur_line and item.kind == "pr" then
-        require("gh_dashboard.reader").open_diff(item)
+        require("gh_dashboard.diff").open(item)
         return
       end
     end
@@ -288,7 +281,6 @@ local function open_win()
     state.is_stale = false
     fetch_and_render()
   end)
-  buf_map("s",            function() require("gh_dashboard.repo_picker").open() end)
   buf_map("<leader>gw",  function() require("gh_dashboard.watchlist").toggle() end)
   buf_map("<leader>gn",  function() require("gh_dashboard.notifications").toggle() end)
   buf_map("<leader>gd",  function() require("gh_dashboard.duck").debug_win() end)

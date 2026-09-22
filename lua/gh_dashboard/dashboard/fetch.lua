@@ -1,5 +1,6 @@
 local M = {}
 local gh      = require("gh_dashboard.gh")
+local gh_events = require("gh_dashboard.events")
 local heatmap = require("gh_dashboard.heatmap")
 local config  = require("gh_dashboard.config")
 
@@ -177,6 +178,51 @@ function M.repos(callback)
   )
 end
 
+function M.org_repos(callback)
+  gh.run_with_retry(
+    { "gh", "api", "/user/orgs", "--paginate" },
+    function(err, orgs)
+      if err or not orgs or #orgs == 0 then
+        callback(nil, {})
+        return
+      end
+      local pending   = #orgs
+      local all_repos = {}
+      local any_err
+      for _, org in ipairs(orgs) do
+        gh.run_with_retry(
+          { "gh", "repo", "list", org.login, "--limit", "1000",
+            "--json", "name,nameWithOwner,url,primaryLanguage,stargazerCount,isPrivate,pushedAt" },
+          function(ferr, repos)
+            if ferr then
+              any_err = ferr
+            else
+              for _, r in ipairs(repos or {}) do
+                table.insert(all_repos, {
+                  name       = r.name,
+                  full_name  = r.nameWithOwner,
+                  url        = r.url,
+                  language   = type(r.primaryLanguage) == "table" and r.primaryLanguage.name or "",
+                  stars      = r.stargazerCount or 0,
+                  is_private = r.isPrivate,
+                  updated_at = r.pushedAt,
+                })
+              end
+            end
+            pending = pending - 1
+            if pending == 0 then
+              table.sort(all_repos, function(a, b)
+                return (a.updated_at or "") > (b.updated_at or "")
+              end)
+              callback(any_err, all_repos)
+            end
+          end
+        )
+      end
+    end
+  )
+end
+
 function M.notifications(callback)
   gh.run_with_retry(
     { "gh", "api", "/notifications" },
@@ -202,12 +248,6 @@ function M.activity_feed(callback, own_login)
   local last_err
 
   local cap = config.get().feed_events_per_source
-  local JQ  = '[.[] | {type, actor:.actor.login, repo:.repo.name, created_at,' ..
-    'action:.payload.action, merged:.payload.pull_request.merged,' ..
-    'pr_number:.payload.pull_request.number, issue_number:.payload.issue.number,' ..
-    'ref:.payload.ref, ref_type:.payload.ref_type,' ..
-    'release_tag:.payload.release.tag_name}] | .[0:' .. cap .. ']'
-
   local function collect(err, events)
     if err then last_err = err
     else
@@ -229,17 +269,20 @@ function M.activity_feed(callback, own_login)
     end
   end
 
+  local function collect_raw(err, evs)
+    if err then collect(err, nil) return end
+    local out = {}
+    for i = 1, math.min(cap, #(evs or {})) do
+      table.insert(out, gh_events.feed_item(evs[i]))
+    end
+    collect(nil, out)
+  end
+
   for _, username in ipairs(users) do
-    gh.run_with_retry(
-      { "gh", "api", "/users/" .. username .. "/events", "--jq", JQ },
-      function(err, evs) collect(err, evs) end
-    )
+    gh_events.user(username, collect_raw)
   end
   for _, r in ipairs(repos) do
-    gh.run_with_retry(
-      { "gh", "api", "/repos/" .. r.owner .. "/" .. r.repo .. "/events", "--jq", JQ },
-      function(err, evs) collect(err, evs) end
-    )
+    gh_events.repo(r.owner, r.repo, collect_raw)
   end
 end
 

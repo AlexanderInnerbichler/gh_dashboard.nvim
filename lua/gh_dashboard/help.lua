@@ -7,7 +7,6 @@ local HELP = {
     { key = "<CR> / o",    desc = "Open item under cursor" },
     { key = "d",           desc = "Open PR diff" },
     { key = "w",           desc = "Watch / unwatch repo" },
-    { key = "s",           desc = "Search all repos (fuzzy picker)" },
     { key = "r",           desc = "Refresh dashboard" },
     { key = "<leader>gw",  desc = "Open watchlist manager" },
     { key = "<leader>gn",  desc = "Open notifications" },
@@ -25,14 +24,18 @@ local HELP = {
     { key = "?",           desc = "Toggle this help" },
   },
   diff = {
-    { key = "c (visual)",  desc = "Post inline review comment" },
-    { key = "q / <Esc>",   desc = "Back" },
-    { key = "?",           desc = "Toggle this help" },
+    { key = "<CR> / o",        desc = "Open file under cursor (picker)" },
+    { key = "<Tab> / <S-Tab>", desc = "Next / previous file" },
+    { key = "c",               desc = "Comment on the line or visual selection" },
+    { key = "A",               desc = "Submit review: comment, approve or request changes" },
+    { key = "q / <Esc>",       desc = "Back to picker (from the picker, close)" },
+    { key = "?",               desc = "Toggle this help" },
   },
   notifications = {
     { key = "<CR> / o",    desc = "Open notification in reader" },
-    { key = "r",           desc = "Mark as read" },
-    { key = "R",           desc = "Refresh" },
+    { key = "x",           desc = "Mark as read" },
+    { key = "X",           desc = "Mark all as read" },
+    { key = "r",           desc = "Refresh" },
     { key = "a",           desc = "Toggle all / unread only" },
     { key = "q / <Esc>",   desc = "Close" },
     { key = "?",           desc = "Toggle this help" },
@@ -52,6 +55,10 @@ local HELP = {
 }
 
 -- ── state ──────────────────────────────────────────────────────────────────
+
+-- Same key, same meaning, everywhere: <CR>/o opens, q/<Esc> goes back,
+-- r refreshes, x dismisses the item under the cursor, ? is this popup.
+local LEGEND = "<CR>/o open    q/<Esc> back    r refresh    x dismiss"
 
 local state = { buf = nil, win = nil, context = nil }
 
@@ -81,8 +88,10 @@ local function open(context)
     table.insert(lines, "  " .. e.key .. padding .. "   " .. e.desc)
   end
   table.insert(lines, "")
+  table.insert(lines, "  " .. LEGEND)
+  table.insert(lines, "")
 
-  local win_w  = math.max(key_w + 20, 36)
+  local win_w  = math.max(key_w + 20, #LEGEND + 4)
   local win_h  = #lines
   local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
   local row    = math.floor((ui.height - win_h) / 2)

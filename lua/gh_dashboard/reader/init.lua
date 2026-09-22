@@ -3,6 +3,7 @@ local highlights = require("gh_dashboard.highlights")
 local fetch      = require("gh_dashboard.reader.fetch")
 local render     = require("gh_dashboard.reader.render")
 local actions    = require("gh_dashboard.reader.actions")
+local review     = require("gh_dashboard.diff.review")
 local utils      = require("gh_dashboard.utils")
 local config     = require("gh_dashboard.config")
 
@@ -13,12 +14,17 @@ local state = {
   win           = nil,
   item          = nil,
   data          = nil,
-  input_buf     = nil,
-  input_win     = nil,
-  diff_item     = nil,
-  diff_line_map = {},
-  diff_head_sha = nil,
+  req           = 0,
 }
+
+--- Fetches outlive the window: closing the reader wipes its buffer, and a
+--- late callback would either write to a dead buffer or, worse, call
+--- open_popup and reopen the view the user just dismissed. Every request
+--- carries a token that close_popup invalidates.
+local function stale(token)
+  return token ~= state.req
+      or not (state.win and vim.api.nvim_win_is_valid(state.win))
+end
 
 -- ── namespace ──────────────────────────────────────────────────────────────
 
@@ -33,20 +39,13 @@ end
 -- ── window management ──────────────────────────────────────────────────────
 
 local function close_popup()
+  state.req = state.req + 1
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, false)
     state.win = nil
   end
 end
 
-local function close_input()
-  if state.input_win and vim.api.nvim_win_is_valid(state.input_win) then
-    vim.api.nvim_win_close(state.input_win, false)
-    state.input_win = nil
-    state.input_buf = nil
-    vim.cmd("stopinsert")
-  end
-end
 
 local sl = utils.sl
 
@@ -66,7 +65,7 @@ local function register_keymaps()
   bmap("c", function()
     if not state.item then return end
     local item = state.item
-    M.open_input("Write comment  |  <C-s> submit  ·  <Esc><Esc> cancel", function(body)
+    utils.prompt({ title = "Write comment", lines = 12 }, function(body)
       if body == "" then return end
       actions.post_comment(item, body, function(err)
         if err then
@@ -80,30 +79,47 @@ local function register_keymaps()
   end)
   bmap("a", function()
     if not state.item or state.item.kind ~= "pr" then return end
-    local item = state.item
-    vim.ui.select(
-      { "Approve", "Request Changes", "Comment Only", "Cancel" },
-      { prompt = "Review type:" },
-      function(choice)
-        if not choice or choice == "Cancel" then return end
-        local kind_map = {
-          ["Approve"]          = "approve",
-          ["Request Changes"]  = "request_changes",
-          ["Comment Only"]     = "comment",
-        }
-        local kind = kind_map[choice]
-        M.open_input(choice .. "  |  <C-s> submit  ·  <Esc><Esc> cancel", function(body)
-          actions.submit_review(item, kind, body, function(err)
-            if err then
-              vim.notify("Review failed: " .. err, vim.log.levels.ERROR)
-            else
-              vim.notify("Review submitted", vim.log.levels.INFO)
-              M.open(item)
-            end
-          end)
-        end)
+    local item    = state.item
+    local pending = review.count(review.key(item.repo, item.number))
+    local queued  = string.format("%d inline comment%s", pending, pending == 1 and "" or "s")
+    utils.prompt({
+      title   = pending > 0 and ("Review — " .. queued .. " riding along") or "Review",
+      lines   = 12,
+      -- normal-mode letters, not control keys: in insert mode <C-r> pastes a
+      -- register and <C-a> repeats the last insert, and binding them here would
+      -- publish a review instead
+      submits = { a = "approve", r = "request_changes" },
+      submit_insert = { key = "<C-s>", tag = "comment" },
+      footer  = " <C-s> comment    <Esc> then  a approve   r request changes"
+             .. "    <Esc><Esc> cancel ",
+    }, function(body, kind)
+      -- GitHub rejects a comment or request-changes review with no summary, and
+      -- that rejection takes the queued inline comments down with it
+      if body == "" and kind ~= "approve" then
+        vim.notify("GitHub needs a summary for this review — nothing sent"
+                   .. (pending > 0 and (", " .. queued .. " still queued") or ""),
+                   vim.log.levels.WARN)
+        return
       end
-    )
+      actions.submit_review(item, kind, body, function(err)
+        if err then
+          vim.notify("Review failed: " .. err
+                     .. (pending > 0 and (" — " .. queued .. " still queued") or ""),
+                     vim.log.levels.ERROR)
+          return
+        end
+        vim.notify(pending > 0 and ("Review submitted with " .. queued) or "Review submitted",
+                   vim.log.levels.INFO)
+        -- the queue is shared with the diff viewer, and submitting here emptied
+        -- it; without this the viewer keeps drawing comments that are gone
+        require("gh_dashboard.diff").refresh_after_review()
+        M.open(item)
+      end)
+    end, function()
+      if pending > 0 then
+        vim.notify("Review not sent — " .. queued .. " still queued", vim.log.levels.WARN)
+      end
+    end)
   end)
   bmap("m", function()
     if not state.item or state.item.kind ~= "pr" then return end
@@ -217,76 +233,14 @@ end
 
 -- ── input buffer ───────────────────────────────────────────────────────────
 
-function M.open_input(hint, on_submit)
-  close_input()
-
-  state.input_buf = vim.api.nvim_create_buf(false, true)
-  vim.b[state.input_buf].render_markdown = { enabled = false }
-  vim.bo[state.input_buf].buftype   = "nofile"
-  vim.bo[state.input_buf].bufhidden = "wipe"
-  vim.bo[state.input_buf].filetype  = "text"
-
-  vim.api.nvim_buf_set_lines(state.input_buf, 0, -1, false, { "", "" })
-
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.60)
-  local height = 12
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  state.input_win = vim.api.nvim_open_win(state.input_buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = " " .. hint .. " ",
-    title_pos  = "center",
-    footer     = " <C-s> submit  ·  q / <Esc><Esc> cancel ",
-    footer_pos = "center",
-  })
-  vim.wo[state.input_win].number         = false
-  vim.wo[state.input_win].relativenumber = false
-  vim.wo[state.input_win].signcolumn     = "no"
-  vim.wo[state.input_win].wrap           = true
-  vim.wo[state.input_win].linebreak      = true
-  vim.wo[state.input_win].foldenable     = false
-
-  vim.api.nvim_win_set_cursor(state.input_win, { 1, 0 })
-  vim.cmd("startinsert")
-
-  local function do_submit()
-    local all_lines = vim.api.nvim_buf_get_lines(state.input_buf, 0, -1, false)
-    local body = table.concat(all_lines, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
-    close_input()
-    on_submit(body)
-  end
-
-  local function imap(mode, lhs, fn)
-    vim.keymap.set(mode, lhs, fn, { buffer = state.input_buf, nowait = true, silent = true })
-  end
-  imap("n", "<C-s>",      do_submit)
-  imap("i", "<C-s>",      do_submit)
-  imap("n", "<Esc><Esc>", close_input)
-  imap("n", "q",          close_input)
-
-  vim.api.nvim_create_autocmd("BufWipeout", {
-    buffer   = state.input_buf,
-    once     = true,
-    callback = function()
-      state.input_buf = nil
-      state.input_win = nil
-    end,
-  })
-end
 
 -- ── public API ─────────────────────────────────────────────────────────────
 
 function M.open(item)
   state.item = item
   state.data = nil
+  state.req  = state.req + 1
+  local token = state.req
   local label = item.number and ("#" .. tostring(item.number)) or (item.full_name or item.repo or "…")
   open_popup(label .. " — loading…", "q back")
 
@@ -300,6 +254,7 @@ function M.open(item)
 
   if item.kind == "issue" then
     fetch.fetch_issue(item, function(err, data)
+      if stale(token) then return end
       if err then
         vim.bo[state.buf].modifiable = true
         vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { "", "  ✗ " .. sl(err) })
@@ -316,13 +271,14 @@ function M.open(item)
     local pending = 2
     local function on_both()
       pending = pending - 1
-      if pending > 0 then return end
+      if pending > 0 or stale(token) then return end
       state.data = pr_data
       local lines, hl_specs, title, footer = render.render_pr(pr_data, rc_data or {})
       open_popup(title, footer)
       write_buf(lines, hl_specs)
     end
     fetch.fetch_pr(item, function(err, data)
+      if stale(token) then return end
       if err then
         vim.bo[state.buf].modifiable = true
         vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { "", "  ✗ " .. sl(err) })
@@ -333,11 +289,13 @@ function M.open(item)
       on_both()
     end)
     fetch.fetch_review_comments(item.number, item.repo, function(data)
+      if stale(token) then return end
       rc_data = data
       on_both()
     end)
   elseif item.kind == "repo" then
     fetch.fetch_readme(item, function(err, body)
+      if stale(token) then return end
       if err then
         vim.bo[state.buf].modifiable = true
         vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { "", "  ✗ " .. sl(err) })
@@ -352,72 +310,7 @@ function M.open(item)
 end
 
 M.open_diff = function(item)
-  open_popup(string.format(" PR #%d diff ", item.number), " c comment · q close ")
-  vim.wo[state.win].wrap = false
-
-  state.diff_item     = item
-  state.diff_line_map = {}
-  state.diff_head_sha = nil
-
-  write_buf({ "", "  Loading diff…" }, {})
-
-  vim.keymap.set("v", "c", function()
-    vim.cmd("normal! \27")  -- exit visual mode first so '< '> are committed
-    local end_ln = vim.fn.getpos("'>")[2] - 1
-    local info   = state.diff_line_map[end_ln]
-    if not info then
-      vim.notify("Cannot comment on this line", vim.log.levels.INFO)
-      return
-    end
-    if not state.diff_head_sha or state.diff_head_sha == "" then
-      vim.notify("Still loading, please try again", vim.log.levels.INFO)
-      return
-    end
-    vim.schedule(function()  -- defer so startinsert runs after mode transition settles
-      M.open_input("Review comment  |  <C-s> submit  ·  <Esc><Esc> cancel", function(body)
-        if body == "" then
-          vim.notify("Comment cannot be empty", vim.log.levels.WARN)
-          return
-        end
-        fetch.post_review_comment(
-          state.diff_item.number, state.diff_item.repo,
-          state.diff_head_sha, info.path, info.line, info.side,
-          body, function(err)
-            if err then
-              vim.notify("Failed: " .. err:gsub("[\n\r]", " "), vim.log.levels.ERROR)
-            else
-              vim.notify("Review comment posted", vim.log.levels.INFO)
-            end
-          end
-        )
-      end)
-    end)
-  end, { buffer = state.buf, nowait = true, silent = true })
-  require("gh_dashboard.help").setup_keymap(state.buf, "diff")
-
-  local pending = 2
-  local diff_text, diff_err, head_sha
-
-  local function on_both()
-    pending = pending - 1
-    if pending > 0 then return end
-    state.diff_head_sha = head_sha or ""
-    local lines, hl_specs = {}, {}
-    table.insert(lines, "")
-    render.render_diff_content(lines, hl_specs, item.number, item.repo,
-                               diff_text or "", diff_err, state.diff_line_map)
-    table.insert(lines, "")
-    write_buf(lines, hl_specs)
-  end
-
-  fetch.fetch_diff(item.number, item.repo, function(err, text)
-    diff_err, diff_text = err, text
-    on_both()
-  end)
-  fetch.fetch_head_sha(item.number, item.repo, function(_, sha)
-    head_sha = sha
-    on_both()
-  end)
+  require("gh_dashboard.diff").open(item)
 end
 
 -- expose action shortcuts so callers don't need to require actions directly

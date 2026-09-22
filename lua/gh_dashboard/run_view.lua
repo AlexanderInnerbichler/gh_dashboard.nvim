@@ -1,3 +1,4 @@
+local utils = require("gh_dashboard.utils")
 local M = {}
 local gh = require("gh_dashboard.gh")
 
@@ -13,22 +14,8 @@ local ns = vim.api.nvim_create_namespace("GhRunView")
 
 -- ── helpers ────────────────────────────────────────────────────────────────
 
-local function sl(s) return (s or ""):gsub("[\n\r]", " ") end
-
-local function age_string(iso8601)
-  if not iso8601 then return "" end
-  local y, mo, d, h, mi, s = iso8601:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-  if not y then return "" end
-  local t  = os.time({ year = y, month = mo, day = d, hour = h, min = mi, sec = s })
-  local u  = os.date("!*t", t)  u.isdst = nil
-  local diff = os.time() - (t + os.difftime(t, os.time(u)))
-  if     diff < 60      then return "just now"
-  elseif diff < 3600    then return math.floor(diff / 60)    .. "m ago"
-  elseif diff < 86400   then return math.floor(diff / 3600)  .. "h ago"
-  elseif diff < 604800  then return math.floor(diff / 86400) .. "d ago"
-  else                       return math.floor(diff / 604800) .. "w ago"
-  end
-end
+local sl         = utils.sl
+local age_string = utils.age_string
 
 local function conclusion_icon(c)
   if c == "success"                         then return "✓", "GhCiPass"
@@ -49,15 +36,7 @@ end
 -- ── buffer I/O ─────────────────────────────────────────────────────────────
 
 local function write_buf(lines, hl_specs)
-  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
-  vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.buf, ns, 0, -1)
-  for _, spec in ipairs(hl_specs) do
-    vim.api.nvim_buf_add_highlight(state.buf, ns, spec.hl, spec.line,
-      spec.col_s, spec.col_e == -1 and -1 or spec.col_e)
-  end
+  utils.write_buf(state.buf, ns, lines, hl_specs)
 end
 
 -- ── render ─────────────────────────────────────────────────────────────────
@@ -72,10 +51,10 @@ local function render_jobs(jobs, logs_by_job_id)
   -- Run summary header
   local c          = type(item.conclusion) == "string" and item.conclusion or "in_progress"
   local icon, icon_hl = conclusion_icon(c)
-  local summary    = "  Run: " .. sl(item.run_name or "?") .. "  ·  " .. sl(item.repo or "?")
-    .. "  ·  " .. icon .. "  " .. c
+  local summary    = "  Run: " .. sl(item.run_name or "?") .. "   " .. sl(item.repo or "?")
+    .. "   " .. icon .. "  " .. c
   table.insert(lines, summary)
-  local icon_off = #"  Run: " + #sl(item.run_name or "?") + #"  ·  " + #sl(item.repo or "?") + #"  ·  "
+  local icon_off = #"  Run: " + #sl(item.run_name or "?") + #"   " + #sl(item.repo or "?") + #"   "
   table.insert(hl_specs, { hl = "GhReaderTitle", line = #lines - 1, col_s = 0,        col_e = icon_off })
   table.insert(hl_specs, { hl = icon_hl,         line = #lines - 1, col_s = icon_off, col_e = -1 })
   table.insert(lines, "")
@@ -106,7 +85,7 @@ local function render_jobs(jobs, logs_by_job_id)
         table.insert(step_parts, sicon .. " " .. sl(step.name or ""))
       end
       if #step_parts > 0 then
-        local step_line = "      " .. table.concat(step_parts, "  ·  ")
+        local step_line = "      " .. table.concat(step_parts, "   ")
         table.insert(lines, step_line)
         table.insert(hl_specs, { hl = "GhStats", line = #lines - 1, col_s = 0, col_e = -1 })
       end
@@ -234,12 +213,7 @@ local function open_win()
   local title = " " .. sl(state.item.run_name or "Run") .. " "
 
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
-    state.buf = vim.api.nvim_create_buf(false, true)
-    vim.b[state.buf].render_markdown = { enabled = false }
-    vim.bo[state.buf].bufhidden  = "wipe"
-    vim.bo[state.buf].buftype    = "nofile"
-    vim.bo[state.buf].modifiable = false
-    vim.bo[state.buf].filetype   = "text"
+    state.buf = utils.scratch_buf()
   end
 
   if state.win and vim.api.nvim_win_is_valid(state.win) then
@@ -247,32 +221,9 @@ local function open_win()
     return
   end
 
-  local ui     = vim.api.nvim_list_uis()[1] or { width = 180, height = 50 }
-  local width  = math.floor(ui.width  * 0.90)
-  local height = math.floor(ui.height * 0.90)
-  local row    = math.floor((ui.height - height) / 2)
-  local col    = math.floor((ui.width  - width)  / 2)
-
-  state.win = vim.api.nvim_open_win(state.buf, true, {
-    relative   = "editor",
-    width      = width,
-    height     = height,
-    row        = row,
-    col        = col,
-    style      = "minimal",
-    border     = "rounded",
-    title      = title,
-    title_pos  = "center",
-    footer     = " r refresh  ·  q close ",
-    footer_pos = "center",
+  state.win = utils.float(state.buf, {
+    title = title, footer = " r refresh   q close ",
   })
-
-  vim.wo[state.win].number         = false
-  vim.wo[state.win].relativenumber = false
-  vim.wo[state.win].signcolumn     = "no"
-  vim.wo[state.win].wrap           = false
-  vim.wo[state.win].cursorline     = false
-  vim.wo[state.win].foldenable     = false
 
   local function bmap(lhs, fn)
     vim.keymap.set("n", lhs, fn, { buffer = state.buf, nowait = true, silent = true })
