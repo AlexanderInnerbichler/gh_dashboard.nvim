@@ -63,15 +63,12 @@ local DUCK_ARGS = { "spring", "summer", "autumn", "winter",
 vim.api.nvim_create_user_command("GhDuck", function(cmd)
   local duck = require("gh_dashboard.duck")
 
-  if cmd.fargs[1] == "panel" then
-    duck.debug_win()
-    return
-  end
-
   local season, night, auto
   for _, raw in ipairs(cmd.fargs) do
     local a = raw:lower()
-    if     a == "night" then night = true
+    -- accepted anywhere, not just first: completion offers it in every position
+    if     a == "panel" then duck.debug_win() return
+    elseif a == "night" then night = true
     elseif a == "day"   then night = false
     elseif a == "auto"  then auto  = true
     elseif vim.tbl_contains(duck.SEASONS, a) then season = a

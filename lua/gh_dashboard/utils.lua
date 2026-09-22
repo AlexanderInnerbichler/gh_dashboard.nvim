@@ -129,8 +129,14 @@ function M.float(buf, opts)
 end
 
 --- Text prompt in a float. `lines` > 1 gives a multi-line body.
---- opts.submits maps keys to a tag handed to on_submit alongside the text;
---- it defaults to <C-s> with no tag. on_submit gets the trimmed text.
+---
+--- opts.submits maps keys to a tag handed to on_submit alongside the text, and
+--- those are bound in NORMAL MODE ONLY. A control key bound in insert mode
+--- shadows what it normally does there: <C-r> inserts a register and <C-a>
+--- repeats the last insert, so someone pasting their text with <C-r>+ would
+--- have fired whatever that key submits instead.
+--- opts.submit_insert = { key, tag } is the single key that also works while
+--- typing; it defaults to <C-s> with no tag.
 --- Cancelling calls on_cancel, so no caller loses work in silence.
 function M.prompt(opts, on_submit, on_cancel)
   local rows = opts.lines or 1
@@ -176,8 +182,10 @@ function M.prompt(opts, on_submit, on_cancel)
   local function map(mode, lhs, fn)
     vim.keymap.set(mode, lhs, fn, { buffer = buf, nowait = true, silent = true })
   end
-  for lhs, tag in pairs(opts.submits or { ["<C-s>"] = "" }) do
-    map({ "n", "i" }, lhs, function() submit(tag) end)
+  local ins = opts.submit_insert or { key = "<C-s>", tag = "" }
+  map({ "n", "i" }, ins.key, function() submit(ins.tag) end)
+  for lhs, tag in pairs(opts.submits or {}) do
+    if lhs ~= ins.key then map("n", lhs, function() submit(tag) end) end
   end
   map("n", "<Esc>", cancel)
   map("n", "q",     cancel)

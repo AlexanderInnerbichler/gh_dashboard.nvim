@@ -188,23 +188,8 @@ sky_at = function(wc, pixel_pos)
   return P.at(state.sky_grid, wc, pixel_pos)
 end
 
---- Lying snow, ice and footprints: a layer of its own between the hills and
---- the grass, because it covers the ground rather than growing out of it.
-ground_at = function(wc, pixel_pos)
-  local col = state.ground_grid[wc]
-  return col and col[pixel_pos] or 0
-end
-
-air_at = function(wc, pixel_pos)
-  return P.at(state.air_grid, wc, pixel_pos)
-end
-
-sky_at = function(wc, pixel_pos)
-  return P.at(state.sky_grid, wc, pixel_pos)
-end
-
---- Lying snow, ice and footprints: a layer of its own between the hills and
---- the grass, because it covers the ground rather than growing out of it.
+--- Lying snow: a layer of its own, because it covers the ground rather than
+--- growing out of it.
 ground_at = function(wc, pixel_pos)
   local col = state.ground_grid[wc]
   return col and col[pixel_pos] or 0
@@ -716,7 +701,12 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
     local wt = vim.uv.new_timer()
     state.wind_timer = wt
     wt:start(0, 120, vim.schedule_wrap(function()
-      if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
+      -- shut the whole thing down rather than just returning: a bare return
+      -- left this waking the loop eight times a second for the rest of the
+      -- session whenever the buffer went away without M.stop() being called
+      if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
+        M.stop(); return
+      end
 
       -- Advance swaying blades; remove finished ones
       for wc, s in pairs(state.swaying) do
@@ -753,6 +743,10 @@ M.start = function(buf, base_line, interval_ms, win_width, hm_display_w, contrib
     local delay = math.random(120000, 240000)
     state.next_trigger_at = vim.uv.now() + delay
     tt:start(delay, 0, vim.schedule_wrap(function()
+      -- M.stop() can land between this timer firing and its callback running,
+      -- and then tt is already closed; re-arming it would throw out of a
+      -- scheduled callback
+      if state.trigger_timer ~= tt then return end
       if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
         M.stop(); return
       end

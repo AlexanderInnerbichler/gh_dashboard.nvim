@@ -250,7 +250,6 @@ end
 
 local night_cache = {}
 
-local night_cache = {}
 local night_on    = false
 
 --- The scene asks for colours by palette index; whether it is night is a
@@ -302,26 +301,6 @@ end
 
 local TRANSPARENT = { " ", "NormalFloat" }
 
--- One cell holds a 2x2 grid of dots, which doubles the horizontal resolution
--- over the half blocks this used to draw. Bit 1 is top-left, 2 top-right,
--- 4 bottom-left, 8 bottom-right.
-local QUAD = {
-  [0]  = " ",
-  [1]  = "▘", [2]  = "▝", [3]  = "▀",
-  [4]  = "▖", [5]  = "▌", [6]  = "▞", [7]  = "▛",
-  [8]  = "▗", [9]  = "▚", [10] = "▐", [11] = "▜",
-  [12] = "▄", [13] = "▙", [14] = "▟", [15] = "█",
-}
-
-local function tally(v, a, b, c, d)
-  return (a == v and 1 or 0) + (b == v and 1 or 0)
-       + (c == v and 1 or 0) + (d == v and 1 or 0)
-end
-
---- Four dots, one cell. A cell can only carry two colours, so the non-zero
---- colour covering the most dots becomes the foreground and the most common of
---- whatever is left -- transparent included -- becomes the background. A third
---- colour in the same cell is approximated rather than dropped.
 -- Sextants: a 2x3 dot grid per cell, so half again the vertical resolution of
 -- the quadrants. Unicode assigns U+1FB00..U+1FB3B to the patterns that do not
 -- already exist as block elements -- 21, 42 and 63 being the left half, the
@@ -343,7 +322,7 @@ do
   SEXT[63] = "█"
 end
 
---- Six dots, one cell. Same two-colour rule as cell4: the non-zero colour on
+--- Six dots, one cell. The non-zero colour on
 --- the most dots is the foreground, the most common of the rest is the ground.
 function M.cell6(a, b, c, d, e, f)
   if a == 0 and b == 0 and c == 0 and d == 0 and e == 0 and f == 0 then
@@ -367,26 +346,5 @@ function M.cell6(a, b, c, d, e, f)
   return { SEXT[mask], M.hl(fg, bg) }
 end
 
-function M.cell4(a, b, c, d)
-  if a == 0 and b == 0 and c == 0 and d == 0 then return TRANSPARENT end
-
-  local fg, n = 0, 0
-  if a ~= 0 then local t = tally(a, a, b, c, d) if t > n then fg, n = a, t end end
-  if b ~= 0 then local t = tally(b, a, b, c, d) if t > n then fg, n = b, t end end
-  if c ~= 0 then local t = tally(c, a, b, c, d) if t > n then fg, n = c, t end end
-  if d ~= 0 then local t = tally(d, a, b, c, d) if t > n then fg, n = d, t end end
-
-  local mask = (a == fg and 1 or 0) + (b == fg and 2 or 0)
-             + (c == fg and 4 or 0) + (d == fg and 8 or 0)
-  if mask == 15 then return { "█", M.hl(fg, 0) } end
-
-  local bg, m = 0, 0
-  if a ~= fg then local t = tally(a, a, b, c, d) if t > m then bg, m = a, t end end
-  if b ~= fg then local t = tally(b, a, b, c, d) if t > m then bg, m = b, t end end
-  if c ~= fg then local t = tally(c, a, b, c, d) if t > m then bg, m = c, t end end
-  if d ~= fg then local t = tally(d, a, b, c, d) if t > m then bg, m = d, t end end
-
-  return { QUAD[mask], M.hl(fg, bg) }
-end
 
 return M

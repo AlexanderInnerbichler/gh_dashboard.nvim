@@ -452,10 +452,17 @@ local function arrange_files(keep_path)
   for i, f in ipairs(state.visible) do
     if f.path == keep_path then state.index = i break end
   end
+  if #state.visible == 0 and #state.files > 0 and state.hide_generated then
+    -- a PR that only touches lockfiles or dist/ would otherwise show an empty
+    -- picker with no way back: the key that used to toggle this is gone
+    state.hide_generated = false
+    state.visible = panel.arrange(state.files, { hide_generated = false })
+    vim.notify("Only generated files changed — showing them", vim.log.levels.INFO)
+  end
   if #state.visible == 0 then
     state.index = 0
     render_panel()
-    show_message("every changed file is hidden as generated")
+    show_message("no files to show")
   else
     open_file(state.index)
   end
@@ -526,12 +533,11 @@ end
 --- instead of a picker feeding a second one. Opening the summary prompt from
 --- inside vim.ui.select's callback let that picker's own teardown close it
 --- again, which dropped whole reviews without a word.
-local SUBMITS = {
-  ["<C-s>"] = "COMMENT",
-  ["<C-a>"] = "APPROVE",
-  ["<C-r>"] = "REQUEST_CHANGES",
-  ["<C-d>"] = "DISCARD",
-}
+-- <C-s> is the one that works while typing; the rest are plain normal-mode
+-- letters, so nothing shadows <C-r>, <C-a> or <C-d> in the buffer you are
+-- writing the summary in.
+local SUBMITS = { a = "APPROVE", r = "REQUEST_CHANGES", d = "DISCARD" }
+local SUBMIT_INSERT = { key = "<C-s>", tag = "COMMENT" }
 
 local function refresh_comments()
   fetch.fetch_review_comments(state.item.number, state.item.repo, function(list)
@@ -562,12 +568,25 @@ local function post_review(event, body, pending)
   end)
 end
 
+--- Throwing the queue away cannot be undone, so it asks first -- the key set
+--- that replaced the old `D` had dropped that confirmation.
 local function discard_review(pending)
-  review.clear(state.review_key)
-  render_panel()
-  local f = state.visible[state.index]
-  if f then draw_comments(f) end
-  vim.notify("Discarded " .. queued_label(pending), vim.log.levels.INFO)
+  if pending == 0 then
+    vim.notify("Nothing queued to discard", vim.log.levels.INFO)
+    return
+  end
+  vim.ui.input({ prompt = "Discard " .. queued_label(pending) .. "? (yes/no): " },
+    function(answer)
+      if answer ~= "yes" then
+        vim.notify("Kept " .. queued_label(pending), vim.log.levels.INFO)
+        return
+      end
+      review.clear(state.review_key)
+      render_panel()
+      local f = state.visible[state.index]
+      if f then draw_comments(f) end
+      vim.notify("Discarded " .. queued_label(pending), vim.log.levels.INFO)
+    end)
 end
 
 --- One float, and the key you submit with picks the event. Feeding the summary
@@ -582,8 +601,9 @@ local function submit_review()
     title   = pending == 0 and "Review — summary only" or ("Review — " .. queued .. " queued"),
     lines   = 12,
     submits = SUBMITS,
-    footer  = " <C-s> comment   <C-a> approve   <C-r> request changes"
-           .. "   <C-d> discard   <Esc><Esc> cancel ",
+    submit_insert = SUBMIT_INSERT,
+    footer  = " <C-s> comment    <Esc> then  a approve   r request changes"
+           .. "   d discard    <Esc><Esc> cancel ",
   }, function(body, event)
     if event == "DISCARD" then
       discard_review(pending)
@@ -702,6 +722,17 @@ local function setup_autocmds()
 end
 
 -- ── public API ─────────────────────────────────────────────────────────────
+
+--- Called when something outside the viewer submits a review for this PR and
+--- empties the shared queue, so the panel and the overlays stop showing
+--- comments that no longer exist.
+function M.refresh_after_review()
+  if not is_open() then return end
+  render_panel()
+  local f = state.visible[state.index]
+  if f then draw_comments(f) end
+  refresh_comments()
+end
 
 function M.close()
   cancel_preview()

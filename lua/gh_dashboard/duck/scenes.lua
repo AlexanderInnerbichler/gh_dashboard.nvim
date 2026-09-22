@@ -25,7 +25,9 @@ end
 
 local function sun(out, ctx)
   table.insert(out, P.make({
-    x = math.floor(ctx.max_x * 0.80), y = 22, sprite = art.SUN, wrap = "none",
+    x = math.floor(ctx.max_x * 0.80 / 2) * 2,   -- even column, like everything else
+    y = 21,                                     -- and a multiple of three
+    sprite = art.SUN, wrap = "none",
   }))
 end
 
@@ -67,17 +69,7 @@ end
 
 -- ── terrain ────────────────────────────────────────────────────────────────
 
-local function triangle(x, period)
-  local t = (x % period) / period
-  return t < 0.5 and t * 2 or (1 - t) * 2
-end
 
---- Winter's skyline: narrow summits, twice as many as a pair of sines gives.
---- Idle while the hills are off; the trees will want a horizon to stand on.
-function M.jagged(sc)
-  return math.max(6, math.min(13,
-    math.floor(6 + triangle(sc, 34) * 6 + triangle(sc + 4, 14) * 2)))
-end
 
 -- ── the seasons ────────────────────────────────────────────────────────────
 

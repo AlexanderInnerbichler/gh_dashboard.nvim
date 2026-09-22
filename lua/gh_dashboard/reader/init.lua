@@ -85,10 +85,22 @@ local function register_keymaps()
     utils.prompt({
       title   = pending > 0 and ("Review — " .. queued .. " riding along") or "Review",
       lines   = 12,
-      submits = { ["<C-s>"] = "comment", ["<C-a>"] = "approve",
-                  ["<C-r>"] = "request_changes" },
-      footer  = " <C-s> comment   <C-a> approve   <C-r> request changes   <Esc><Esc> cancel ",
+      -- normal-mode letters, not control keys: in insert mode <C-r> pastes a
+      -- register and <C-a> repeats the last insert, and binding them here would
+      -- publish a review instead
+      submits = { a = "approve", r = "request_changes" },
+      submit_insert = { key = "<C-s>", tag = "comment" },
+      footer  = " <C-s> comment    <Esc> then  a approve   r request changes"
+             .. "    <Esc><Esc> cancel ",
     }, function(body, kind)
+      -- GitHub rejects a comment or request-changes review with no summary, and
+      -- that rejection takes the queued inline comments down with it
+      if body == "" and kind ~= "approve" then
+        vim.notify("GitHub needs a summary for this review — nothing sent"
+                   .. (pending > 0 and (", " .. queued .. " still queued") or ""),
+                   vim.log.levels.WARN)
+        return
+      end
       actions.submit_review(item, kind, body, function(err)
         if err then
           vim.notify("Review failed: " .. err
@@ -98,6 +110,9 @@ local function register_keymaps()
         end
         vim.notify(pending > 0 and ("Review submitted with " .. queued) or "Review submitted",
                    vim.log.levels.INFO)
+        -- the queue is shared with the diff viewer, and submitting here emptied
+        -- it; without this the viewer keeps drawing comments that are gone
+        require("gh_dashboard.diff").refresh_after_review()
         M.open(item)
       end)
     end, function()
